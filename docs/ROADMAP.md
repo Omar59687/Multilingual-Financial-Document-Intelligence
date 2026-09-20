@@ -2,14 +2,16 @@
 AI-Powered Finance Document Intelligence System
 
 > Development phases.
-> Related docs: [PROJECT_SPEC.md](PROJECT_SPEC.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) · [DATASET_DESIGN.md](DATASET_DESIGN.md)
+> Related docs: [PROJECT_SPEC.md](PROJECT_SPEC.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) · [DATASET_DESIGN.md](DATASET_DESIGN.md) · [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md) · [EVALUATION_PLAN.md](EVALUATION_PLAN.md)
 
 ## Current Status
 
 - Current phase: Phase 0
-- Current task: Dataset design and source-data investigation
+- Current task: Canonical truth model and evaluation design
 - Implementation status: AI/data pipeline has not started yet
 - Dataset design status: DRAFT — [DATASET_DESIGN.md](DATASET_DESIGN.md) created, pending architect review (not marked complete)
+- Canonical model status: DRAFT — [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md) created, pending architect review (Phase 0 not complete)
+- Evaluation plan status: DRAFT — [EVALUATION_PLAN.md](EVALUATION_PLAN.md) created, pending architect review (thresholds TBD)
 
 ## Phase 0 — Foundation and Dataset Design
 

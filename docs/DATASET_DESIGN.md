@@ -3,7 +3,7 @@
 AI-Powered Finance Document Intelligence System
 
 > Authoritative specification for the dataset (design only — no data collected yet).
-> Related docs: [PROJECT_SPEC.md](PROJECT_SPEC.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [ROADMAP.md](ROADMAP.md) · [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md)
+> Related docs: [PROJECT_SPEC.md](PROJECT_SPEC.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [ROADMAP.md](ROADMAP.md) · [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) · [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md) · [EVALUATION_PLAN.md](EVALUATION_PLAN.md)
 >
 > Status: DRAFT for architect review. See [Section 12](#12-open-decisions) for unresolved decisions.
 
@@ -404,14 +404,14 @@ Evaluation questions and answers must not leak into the retrievable corpus or in
 
 | Decision | Status | Options | Recommendation | Needs architect approval? |
 |----------|--------|---------|----------------|---------------------------|
-| Exact source-data strategy | Open | A. open-source / B. combined public / C. synthetic / D. hybrid | D (synthetic truth, calibrated vs. public references) | Yes |
-| Company industry/scenario | Proposed | retail & distribution / logistics / hospitality / other | Noor Retail & Distribution Co. (food retail + wholesale) | Yes |
-| Currency | Proposed | SAR / USD / EGP / multi | SAR single-currency (pegged, avoids FX noise) | Yes |
-| 10-year range | Proposed | 2015–2024 / 2014–2023 / other | 2015–2024 (complete years, incl. 2020 shock + 2024 holdout) | Yes |
-| Final ~150-document distribution | Proposed | counts in §6 | format/language/purpose tables in §6 | Yes |
-| Synthetic vs. open-source balance | Open | pure public / pure synthetic / hybrid | hybrid synthetic-first (§5) | Yes |
+| Exact source-data strategy | Approved (HYBRID) | A. open-source / B. combined public / C. synthetic / D. hybrid | D (own controlled synthetic truth; public data reference-only) | Approved |
+| Company industry/scenario | Approved | retail & distribution / logistics / hospitality / other | Noor Retail & Distribution Co. (Saudi food retail + wholesale; Riyadh/Jeddah/Dammam; Sales, Procurement, Warehouse & Logistics, Administration) | Approved |
+| Currency | Approved (SAR only, V1) | SAR / USD / EGP / multi | SAR single-currency (pegged, avoids FX noise) | Approved |
+| 10-year range | Approved (2015-01-01–2024-12-31) | 2015–2024 / 2014–2023 / other | 2015–2024 (complete years, incl. 2020 shock + 2024 holdout) | Approved |
+| Final ~150-document distribution | Approved as working target | counts in §6 | format/language/purpose tables in §6; may adjust after DEV-set experiments | Approved (working target) |
+| Synthetic vs. open-source balance | Approved (synthetic-first hybrid) | pure public / pure synthetic / hybrid | hybrid synthetic-first (§5); external data never authoritative truth | Approved |
 | DEV-001…010 file/role list | Proposed | list in §7 | approve roles; filenames adjustable at generation time | Yes |
-| Ground-truth tolerance rules | Open | exact / rounding bands per metric | define at schema finalization (Phase 0) | Yes |
-| Forecasting holdout protocol | Proposed | last-12-months holdout on 2024 | approve; metrics fixed before modeling | Yes |
+| Ground-truth tolerance rules | Open | exact / rounding bands per metric | define at schema finalization (Phase 0); see [EVALUATION_PLAN.md](EVALUATION_PLAN.md) §3 | Yes |
+| Forecasting holdout protocol | Proposed | last-12-months holdout on 2024 | approve; metrics fixed before modeling; see [EVALUATION_PLAN.md](EVALUATION_PLAN.md) §10 | Yes |
 
-No item above is final until architect review. Evidence-gathering order: (1) approve scenario/currency/range, (2) investigate source-data references, (3) freeze truth schema, (4) generate DEV set.
+Approvals recorded above reflect architect decisions; remaining "Proposed"/"Open" rows still require review. Evidence-gathering order: (1) ~~approve scenario/currency/range~~ DONE, (2) investigate source-data references, (3) freeze truth schema ([CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md)), (4) generate DEV set.

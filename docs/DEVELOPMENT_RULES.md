@@ -2,7 +2,7 @@
 AI-Powered Finance Document Intelligence System
 
 > Rules that future coding agents MUST follow.
-> Related docs: [PROJECT_SPEC.md](PROJECT_SPEC.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [ROADMAP.md](ROADMAP.md) · [DATASET_DESIGN.md](DATASET_DESIGN.md)
+> Related docs: [PROJECT_SPEC.md](PROJECT_SPEC.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [ROADMAP.md](ROADMAP.md) · [DATASET_DESIGN.md](DATASET_DESIGN.md) · [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md) · [EVALUATION_PLAN.md](EVALUATION_PLAN.md)
 
 ## Rule 1 — Read project documentation first
 
@@ -13,6 +13,8 @@ Before significant changes, read:
 - docs/ROADMAP.md
 - docs/DEVELOPMENT_RULES.md
 - docs/DATASET_DESIGN.md
+- docs/CANONICAL_DATA_MODEL.md
+- docs/EVALUATION_PLAN.md
 
 ## Rule 2 — Do not silently change architecture
 

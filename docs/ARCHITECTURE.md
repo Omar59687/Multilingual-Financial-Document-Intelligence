@@ -2,7 +2,7 @@
 AI-Powered Finance Document Intelligence System
 
 > Describes HOW the system works.
-> Related docs: [PROJECT_SPEC.md](PROJECT_SPEC.md) · [ROADMAP.md](ROADMAP.md) · [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) · [DATASET_DESIGN.md](DATASET_DESIGN.md)
+> Related docs: [PROJECT_SPEC.md](PROJECT_SPEC.md) · [ROADMAP.md](ROADMAP.md) · [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) · [DATASET_DESIGN.md](DATASET_DESIGN.md) · [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md) · [EVALUATION_PLAN.md](EVALUATION_PLAN.md)
 
 ## Conceptual Flow
 

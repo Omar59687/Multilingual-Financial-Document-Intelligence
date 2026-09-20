@@ -1,0 +1,4 @@
+# MizanIQ Phase 0 — minimal dependencies for canonical dataset generation.
+# The generator itself is standard-library only (csv, decimal, random, ...).
+# Only the test runner is required.
+pytest>=7.0
