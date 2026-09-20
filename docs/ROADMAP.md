@@ -7,10 +7,12 @@ AI-Powered Finance Document Intelligence System
 ## Current Status
 
 - Current phase: Phase 0
-- Current task: Canonical truth model and evaluation design
+- Current task: Generate and validate the 10 representative DEV documents
 - Implementation status: AI/data pipeline has not started yet
 - Dataset design status: DRAFT — [DATASET_DESIGN.md](DATASET_DESIGN.md) created, pending architect review (not marked complete)
 - Canonical model status: DRAFT — [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md) created, pending architect review (Phase 0 not complete)
+- Canonical dataset status: IMPLEMENTED — deterministic generator + dataset_v0.1 truth tables validated (seed 42)
+- DEV document status: IMPLEMENTED — 10 DEV documents + ground truth generated and validated per [DEV_DOCUMENT_SPEC.md](DEV_DOCUMENT_SPEC.md) (Phase 0 not complete)
 - Evaluation plan status: DRAFT — [EVALUATION_PLAN.md](EVALUATION_PLAN.md) created, pending architect review (thresholds TBD)
 
 ## Phase 0 — Foundation and Dataset Design

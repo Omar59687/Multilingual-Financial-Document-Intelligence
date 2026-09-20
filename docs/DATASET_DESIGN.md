@@ -205,6 +205,13 @@ Avoid generating 150 nearly identical documents. Vary explicitly across: year, b
 
 Exactly 10 stable development documents. IDs DEV-001…DEV-010 are permanent: if a file is regenerated, the ID stays with its role.
 
+> Implementation note (dataset_v0.1): the authoritative per-document contract
+> (filenames, canonical source selections, ground-truth schema, rendering and
+> degradation parameters) is [DEV_DOCUMENT_SPEC.md](DEV_DOCUMENT_SPEC.md).
+> One decided deviation from the proposal below: DEV-004 ships as a standalone
+> scanned-receipt **PNG** (not PDF), per the architect-approved "scanned Arabic
+> image/document" role — this also preserves standalone-image coverage.
+
 ### DEV-001 — English native annual income statement (PDF)
 
 - Proposed filename: `DEV-001_income_statement_2023_EN.pdf`

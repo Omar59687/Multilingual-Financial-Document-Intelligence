@@ -1,4 +1,18 @@
-# MizanIQ Phase 0 — minimal dependencies for canonical dataset generation.
-# The generator itself is standard-library only (csv, decimal, random, ...).
-# Only the test runner is required.
+# MizanIQ Phase 0 — minimal dependencies.
+# Canonical truth generation is standard-library only; document generation
+# needs the format/rendering libraries below (all pure-Python/wheel, no
+# OCR/AI/model packages). Versions are pinned: raster + PDF/DOCX/XLSX byte
+# reproducibility is verified empirically on this stack.
 pytest>=7.0
+reportlab==4.4.10
+python-docx==1.2.0
+openpyxl==3.1.5
+# NOTE: matplotlib is intentionally NOT used. Charts/dashboards are drawn
+# with Pillow (deterministic, no native extensions). The system matplotlib
+# is uninstallable/broken here (built against NumPy 1.x, env has NumPy 2.x),
+# and Pillow fully covers the fixture-grade visuals this phase needs.
+Pillow==10.4.0
+arabic-reshaper==3.0.0
+python-bidi==0.6.7
+pypdf==6.6.0
+pypdfium2==5.6.0
