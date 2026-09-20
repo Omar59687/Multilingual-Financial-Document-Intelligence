@@ -201,6 +201,8 @@ def build_dev002(sel, docs_dir):
     from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
     A = R.ar
+    # A4 content width (595.27pt minus 72pt default margins each side).
+    AP = lambda text, size: R.ar_para(text, "Arial", size, 450.0)
     styles = getSampleStyleSheet()
     title = ParagraphStyle("ArTitle", parent=styles["Title"],
                            fontName="Arial-Bold", fontSize=16, alignment=2)
@@ -250,34 +252,35 @@ def build_dev002(sel, docs_dir):
     ]))
 
     flow = [
-        Paragraph(A(COMPANY_AR), title),
-        Paragraph(A("تقرير المصروفات التشغيلية — فرع جدة — السنة المالية"),
-                  title),
+        Paragraph(AP(COMPANY_AR, 16), title),
+        Paragraph(AP("تقرير المصروفات التشغيلية — فرع جدة — السنة المالية",
+                     16), title),
         Spacer(1, 4),
         # Bidi-isolation rule: digits/Latin live on standalone LTR lines so
         # every parser recovers them; Arabic prose stays digit-free.
-        Paragraph(A("إجمالي المصروفات التشغيلية للسنة"), normal),
+        Paragraph(AP("إجمالي المصروفات التشغيلية للسنة", 10), normal),
         Paragraph(f"2022 : {R.fmt_money(sel['total_opex'])} SAR", kpi),
         Spacer(1, 6),
-        Paragraph(A("المصروفات التشغيلية الشهرية (ر.س)"), normal),
+        Paragraph(AP("المصروفات التشغيلية الشهرية (ر.س)", 10), normal),
         t1,
         Spacer(1, 8),
-        Paragraph(A("تحليل بنود المصروفات من عينة المعاملات المصنفة"), normal),
+        Paragraph(AP("تحليل بنود المصروفات من عينة المعاملات المصنفة", 10),
+                  normal),
         t2,
         Spacer(1, 4),
-        Paragraph(A("ملاحظة: يغطي هذا التحليل عينة من المعاملات المصنفة فقط، "
-                    "ولا يمثل كامل المصروفات التشغيلية."), normal),
+        Paragraph(AP("ملاحظة: يغطي هذا التحليل عينة من المعاملات المصنفة فقط، "
+                     "ولا يمثل كامل المصروفات التشغيلية.", 10), normal),
         Paragraph("Sample size: 372 transactions (partial extract).", normal),
         Spacer(1, 4),
-        Paragraph(A("سجلت الرواتب البند الأعلى ضمن العينة المصنفة، تلتها "
-                    "تكاليف اللوجستيات. وخلال ربيع عام ألفين واثنين وعشرين "
-                    "نفذت الشركة حملة رمضان الترويجية التي رفعت الإنفاق "
-                    "التسويقي في ذلك الربع."), normal),
+        Paragraph(AP("سجلت الرواتب البند الأعلى ضمن العينة المصنفة، تلتها "
+                     "تكاليف اللوجستيات. وخلال ربيع عام ألفين واثنين وعشرين "
+                     "نفذت الشركة حملة رمضان الترويجية التي رفعت الإنفاق "
+                     "التسويقي في ذلك الربع.", 10), normal),
         Paragraph("Reference event: EVT-2022-001 (Ramadan 2022 campaign).",
                   normal),
         Spacer(1, 4),
-        Paragraph(A("المصدر: الحقيقة التشغيلية المعتمدة · مجموعة البيانات "
-                    "dataset_v0.1"), normal),
+        Paragraph(AP("المصدر: الحقيقة التشغيلية المعتمدة · مجموعة البيانات "
+                     "dataset_v0.1", 10), normal),
     ]
     filename = "DEV-002_branch_expenses_2022_AR.pdf"
     R.build_pdf(docs_dir / filename, flow,
@@ -867,6 +870,9 @@ def build_dev009(sel, docs_dir):
              ("Net income", f"{float(kpis['net_income']) / 1e6:.2f}M SAR")]
     bar_labels = ["Riyadh", "Jeddah", "Dammam"]
     bar_values = [float(branch_rev[b]) for b in ("BR-RUH", "BR-JED", "BR-DMM")]
+    # Budget-verdict semantic rule (spec §DEV-009, no tolerance threshold):
+    # revenue-type targets: actual >= budget -> met; expense-type budgets
+    # would use actual <= budget -> met. This dashboard is revenue-type.
     status = ("Budget met" if sel["variance"] >= 0 else "Budget missed")
     panel_lines = [
         f"Budget:  {float(sel['budget_total']) / 1e6:.2f}M SAR",

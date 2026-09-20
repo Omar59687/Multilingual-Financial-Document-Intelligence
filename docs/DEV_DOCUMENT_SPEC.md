@@ -22,7 +22,7 @@
   (§Coverage) is "scanned Arabic **image/document**", so DEV-004 is a standalone
   **PNG** (this also preserves the format-coverage requirement of a standalone
   Arabic image). No implementation blocker; roles otherwise unchanged.
-- **Arabic rendering:** reportlab/Pillow/matplotlib do not shape Arabic
+- **Arabic rendering:** reportlab/Pillow do not shape Arabic
   natively. All Arabic raster/vector text goes through `arabic_reshaper` +
   `python-bidi` with Arial (`C:\Windows\Fonts\arial.ttf`, full Arabic
   coverage). DOCX needs no reshaping (Word shapes natively; paragraphs flagged
@@ -36,7 +36,16 @@
   sit inside reshaped RTL paragraphs, even though the rendered glyphs are
   correct for OCR. Arabic prose uses spelled-out years where a year must
   appear in narrative (e.g. "عام ألفين واثنين وعشرين"). Pure-digit table
-  cells extract exactly and are used for tabular values.
+  cells extract exactly and are used for tabular values. Related fix:
+  multi-line RTL paragraphs are pre-wrapped on the LOGICAL string with each
+  line reordered independently (`renderers.ar_para`) — wrapping the visual
+  string would flip paragraph line order.
+- **Controlled-fixture disclaimer (architect-approved):** bidi-isolation is a
+  v0.1 development-fixture strategy to keep the 10-doc proving ground cleanly
+  gradable. It is NOT the target for the final corpus: larger datasets
+  (v0.2+) MUST include harder natural Arabic/Latin mixing, including numbers
+  and identifiers embedded inside RTL content. The final corpus must never be
+  designed only around pypdf extraction quirks.
 - **Charts are Pillow-native** (matplotlib intentionally unused — see
   requirements.txt): deterministic drawing with Arial, no native-extension
   nondeterminism.
@@ -188,9 +197,9 @@
   (type 10/AR→AR); "Which vendor issued it?"
 - **Answer source:** the single canonical transaction row.
 - **Citation strategy:** whole-image citation (filename, no pages).
-- **Edge cases:** rotation crops nothing (canvas padded pre-rotation);
+- **Edge cases:**   rotation crops nothing (canvas padded pre-rotation);
   reshaped Arabic verified present in the *clean* pre-degradation render
-  (ground truth `generation_parameters.clean_text`).
+  (ground truth `generation_parameters.clean_text_note`).
 
 ## DEV-005 — Management commentary (DOCX, mixed)
 
@@ -304,6 +313,11 @@
   7,409,550.73 + DMM 2,993,937.78) → variance **+52,904.62 (+0.22%,
   budget met)**. Branch revenue bars: RUH 13,833,788.57 · JED 6,858,452.95 ·
   DMM 3,210,192.82.
+- **Budget-verdict semantic rule (no arbitrary tolerance):** for revenue-type
+  targets, `actual >= budget` → target met; for expense/cost-type budgets,
+  `actual <= budget` → target met. DEV-009 renders a revenue verdict, so
+  23,902,434.34 ≥ 23,849,529.72 → "Budget met". The rule is metric-directional
+  by construction and applies identically to future expense dashboards.
 - **Purpose:** complex visual-layout + mixed-language visual QA fixture.
 - **Table:** no. **Chart/image:** KPI cards + branch bars + budget-vs-actual
   panel (1600×1000, JPEG quality 92, no EXIF).

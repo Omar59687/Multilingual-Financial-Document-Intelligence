@@ -31,16 +31,50 @@ PDF_META = {"author": "MizanIQ", "title": None,
 # ---------------------------------------------------------------------------
 def ar(text: str) -> str:
     """Reshape + bidi-reorder logical Arabic text for visual renderers
-    (reportlab, Pillow, matplotlib). NOT for DOCX (Word shapes natively)."""
+    (reportlab, Pillow, matplotlib). NOT for DOCX (Word shapes natively).
+
+    Safe ONLY for single-line strings. For wrapping paragraphs use ar_para.
+    """
     import arabic_reshaper
     from bidi.algorithm import get_display
     return get_display(arabic_reshaper.reshape(text))
 
 
+def ar_para(text: str, font_name: str, font_size: float,
+            max_width: float) -> str:
+    """Wrap a logical Arabic paragraph into visual-order reportlab lines.
+
+    reportlab wraps the already-reordered visual string, which flips
+    multi-line RTL paragraphs (the logical tail lands on the top line).
+    Wrapping the LOGICAL text first and reordering each line independently
+    preserves paragraph reading order. Returns markup with <br/> breaks;
+    a single-line input returns a single visual line (identical to ar()).
+    """
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+    from reportlab.pdfbase import pdfmetrics
+    words = text.split(" ")
+    space_w = pdfmetrics.stringWidth(" ", font_name, font_size)
+    lines, cur, cur_w = [], [], 0.0
+    for word in words:
+        word_w = pdfmetrics.stringWidth(arabic_reshaper.reshape(word),
+                                        font_name, font_size)
+        advance = word_w if not cur else space_w + word_w
+        if cur and cur_w + advance > max_width:
+            lines.append(" ".join(cur))
+            cur, cur_w = [word], word_w
+        else:
+            cur.append(word)
+            cur_w += advance
+    if cur:
+        lines.append(" ".join(cur))
+    return "<br/>".join(get_display(arabic_reshaper.reshape(line))
+                        for line in lines)
+
+
 def fmt_money(value: Decimal) -> str:
     """Document-facing money: thousands separators, exactly 2dp."""
     return format(value, ",.2f")
-
 
 def plain(value: Decimal) -> str:
     """Ground-truth numeric form: plain 2dp, no separators."""

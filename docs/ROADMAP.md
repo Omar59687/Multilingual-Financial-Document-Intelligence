@@ -6,14 +6,18 @@ AI-Powered Finance Document Intelligence System
 
 ## Current Status
 
-- Current phase: Phase 0
-- Current task: Generate and validate the 10 representative DEV documents
-- Implementation status: AI/data pipeline has not started yet
-- Dataset design status: DRAFT — [DATASET_DESIGN.md](DATASET_DESIGN.md) created, pending architect review (not marked complete)
-- Canonical model status: DRAFT — [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md) created, pending architect review (Phase 0 not complete)
+- Current phase: **Phase 0 — COMPLETE** (freeze record:
+  [DATASET_V0_1_FREEZE.md](DATASET_V0_1_FREEZE.md), 2026-09-20; 33/33 tests
+  passing; all 14 exit criteria met)
+- Next phase: Phase 1 — Native Document Ingestion
+- Current task: Not started — awaiting architect implementation prompt
+- Implementation status: AI/data pipeline has not started yet (no ingestion
+  code exists; do NOT implement Phase 1 without an explicit prompt)
+- Dataset design status: FROZEN for dataset_v0.1 — [DATASET_DESIGN.md](DATASET_DESIGN.md) + [DEV_DOCUMENT_SPEC.md](DEV_DOCUMENT_SPEC.md) (v0.2+ changes need a new dataset version)
+- Canonical model status: FROZEN for dataset_v0.1 — [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md)
 - Canonical dataset status: IMPLEMENTED — deterministic generator + dataset_v0.1 truth tables validated (seed 42)
-- DEV document status: IMPLEMENTED — 10 DEV documents + ground truth generated and validated per [DEV_DOCUMENT_SPEC.md](DEV_DOCUMENT_SPEC.md) (Phase 0 not complete)
-- Evaluation plan status: DRAFT — [EVALUATION_PLAN.md](EVALUATION_PLAN.md) created, pending architect review (thresholds TBD)
+- DEV document status: IMPLEMENTED — 10 DEV documents + ground truth generated and validated per [DEV_DOCUMENT_SPEC.md](DEV_DOCUMENT_SPEC.md)
+- Evaluation plan status: PROCEDURE-FROZEN, thresholds TBD — [EVALUATION_PLAN.md](EVALUATION_PLAN.md) (thresholds await baseline experiments; explicitly not a Phase 0 blocker)
 
 ## Phase 0 — Foundation and Dataset Design
 
