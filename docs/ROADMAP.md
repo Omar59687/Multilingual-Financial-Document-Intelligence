@@ -10,9 +10,10 @@ AI-Powered Finance Document Intelligence System
   [DATASET_V0_1_FREEZE.md](DATASET_V0_1_FREEZE.md), 2026-09-20; 33/33 tests
   passing; all 14 exit criteria met)
 - Next phase: Phase 1 — Native Document Ingestion
-- Current task: Not started — awaiting architect implementation prompt
-- Implementation status: AI/data pipeline has not started yet (no ingestion
-  code exists; do NOT implement Phase 1 without an explicit prompt)
+- Current task: Native parser foundation and baseline evaluation
+- Implementation status: Phase-1 native ingestion implemented
+  (`src/ingestion/`, design in [INGESTION_DESIGN.md](INGESTION_DESIGN.md));
+  OCR/RAG/forecasting/UI explicitly out of scope until later phases
 - Dataset design status: FROZEN for dataset_v0.1 — [DATASET_DESIGN.md](DATASET_DESIGN.md) + [DEV_DOCUMENT_SPEC.md](DEV_DOCUMENT_SPEC.md) (v0.2+ changes need a new dataset version)
 - Canonical model status: FROZEN for dataset_v0.1 — [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md)
 - Canonical dataset status: IMPLEMENTED — deterministic generator + dataset_v0.1 truth tables validated (seed 42)

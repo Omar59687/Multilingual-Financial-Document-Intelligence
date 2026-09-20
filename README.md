@@ -5,9 +5,26 @@ AI-Powered Finance Document Intelligence System
 
 ## Current Status
 
-- Current phase: **Phase 0 — Foundation and Dataset Design**
-- Implementation status: AI/data pipeline has not started yet.
+- Current phase: **Phase 1 — Native Document Ingestion** (Phase 0 COMPLETE,
+  dataset_v0.1 frozen — see `docs/DATASET_V0_1_FREEZE.md`)
 - Development is incremental: the pipeline must prove itself on ~10 representative documents before scaling toward ~150 files / ~10 years.
+
+## Phase-1 native ingestion
+
+Deterministic parsers (PDF/DOCX/XLSX/CSV/PNG/JPG) producing one normalized
+representation with source provenance, native-vs-OCR classification, and
+controlled failures. No OCR/AI/RAG in this phase. Run the baseline locally —
+output is git-ignored:
+
+```text
+python scripts/ingest_dev_corpus.py
+python -m pytest tests/ -q
+```
+
+Produces `data/ingestion/dataset_v0.1/`: one normalized JSON per DEV document
+plus `baseline_summary.json`. Design: `docs/INGESTION_DESIGN.md`. Expected
+DEV behavior: 001/002/003/005/006/007 native-ok; 004/008/009 visual-only;
+010 OCR-required.
 
 ## Canonical dataset_v0.1 (Phase 0 implementation)
 
@@ -60,4 +77,6 @@ Authoritative docs (read these before contributing):
 - [docs/DATASET_DESIGN.md](docs/DATASET_DESIGN.md) — dataset design (DRAFT, pending review)
 - [docs/CANONICAL_DATA_MODEL.md](docs/CANONICAL_DATA_MODEL.md) — canonical truth model (DRAFT, pending review)
  - [docs/EVALUATION_PLAN.md](docs/EVALUATION_PLAN.md) — evaluation contract (DRAFT, thresholds TBD)
-- [docs/DEV_DOCUMENT_SPEC.md](docs/DEV_DOCUMENT_SPEC.md) — DEV-001…010 document/ground-truth specification (ACTIVE for dataset_v0.1)
+ - [docs/DEV_DOCUMENT_SPEC.md](docs/DEV_DOCUMENT_SPEC.md) — DEV-001…010 document/ground-truth specification (ACTIVE for dataset_v0.1)
+- [docs/DATASET_V0_1_FREEZE.md](docs/DATASET_V0_1_FREEZE.md) — Phase 0 freeze record
+- [docs/INGESTION_DESIGN.md](docs/INGESTION_DESIGN.md) — Phase 1 native-ingestion design (ACTIVE)

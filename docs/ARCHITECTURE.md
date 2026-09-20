@@ -209,3 +209,13 @@ Structured financial data
 The LLM does NOT generate the forecast numbers.
 
 Forecasts come from validated statistical/time-series methods trained on DuckDB records. The LLM may only explain, in Arabic or English, what the validated model produced.
+
+## Implementation Status — Ingestion (Phase 1)
+
+The `Ingestion` box above is implemented natively in `src/ingestion/`:
+deterministic routing (extension + magic bytes), one normalized
+Document/Element model with provenance, per-format parsers (pypdf +
+pdfplumber-lattice for PDF, python-docx, openpyxl, stdlib csv, Pillow
+metadata), and explicit native/OCR/visual classification. OCR, embeddings,
+retrieval, and answer generation remain future phases. Details:
+[INGESTION_DESIGN.md](INGESTION_DESIGN.md).
