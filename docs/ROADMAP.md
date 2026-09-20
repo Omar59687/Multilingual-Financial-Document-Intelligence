@@ -6,11 +6,11 @@ AI-Powered Finance Document Intelligence System
 
 ## Current Status
 
-- Current phase: **Phase 0 — COMPLETE** (freeze record:
-  [DATASET_V0_1_FREEZE.md](DATASET_V0_1_FREEZE.md), 2026-09-20; 33/33 tests
-  passing; all 14 exit criteria met)
-- Next phase: Phase 1 — Native Document Ingestion
-- Current task: Native parser foundation and baseline evaluation
+- Current phase: **Phase 1 — COMPLETE** (freeze record:
+  [PHASE_1_FREEZE.md](PHASE_1_FREEZE.md), 2026-09-20; 56/56 tests
+  passing; all 17 exit criteria met)
+- Next phase: Phase 2 — OCR and Visual Document Understanding
+- Current task: Not started — awaiting architect implementation prompt
 - Implementation status: Phase-1 native ingestion implemented
   (`src/ingestion/`, design in [INGESTION_DESIGN.md](INGESTION_DESIGN.md));
   OCR/RAG/forecasting/UI explicitly out of scope until later phases
@@ -34,6 +34,8 @@ Goals:
 No full 150-document processing yet.
 
 ## Phase 1 — Native Document Ingestion
+
+Status: **COMPLETE** — freeze record [PHASE_1_FREEZE.md](PHASE_1_FREEZE.md).
 
 Support basic reading of:
 

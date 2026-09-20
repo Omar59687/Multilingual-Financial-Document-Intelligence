@@ -59,10 +59,11 @@ class Element:
     element_type: ElementType
     page: Optional[int] = None          # 1-based PDF/DOCX page (None if n/a)
     sheet: Optional[str] = None         # xlsx sheet name
-    row: Optional[int] = None           # 0/1-based per parser (see meta.unit)
+    row: Optional[int] = None           # PDF/DOCX table cells: 0-based;
+                                        # XLSX: native 1-based; CSV row_number: 1-based
     column: Optional[int] = None
     table_index: Optional[int] = None   # 0-based table order on page/sheet
-    text: Optional[str] = None          # human text (verbatim, untrimmed? no: stripped)
+    text: Optional[str] = None          # verbatim content, outer whitespace stripped
     value: Any = None                   # native value (xlsx numbers stay numbers)
     data_type: Optional[str] = None     # xlsx cell data_type / csv "str"
     meta: dict = field(default_factory=dict)
