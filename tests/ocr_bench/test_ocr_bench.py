@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from ocrbench import metrics, normalize, prompts, schema, truth  # noqa: E402
+from ocrbench import (metrics, normalize, paddle_adapter, prompts, schema,  # noqa: E402
+                      truth)
 from prepare_ocr_benchmark import build_workspace  # noqa: E402
 
 DOCS = ROOT / "data" / "dev" / "dataset_v0.1" / "documents"
@@ -253,13 +254,13 @@ def test_no_benchmark_truth_import_in_production():
 
 def test_notebook_is_minimal_and_valid():
     nb_path = ROOT / "notebooks" / "ocr_vision_benchmark.ipynb"
-    assert nb_path.stat().st_size < 20 * 1024, "notebook must stay minimal"
+    assert nb_path.stat().st_size < 30 * 1024, "notebook must stay minimal"
     nb = json.loads(nb_path.read_text(encoding="utf-8"))
     assert nb["nbformat"] == 4
     sources = "\n".join("".join(c.get("source", []))
                         for c in nb["cells"])
-    for token in ("run_paddleocr_vl", "kaggle_results.json", "latency_ms",
-                   "PADDLE_MODEL_ID", "DEVICE"):
+    for token in ("_get_paddle_pipeline", "kaggle_results.json",
+                   "latency_ms", "PADDLE_MODEL_ID", "DEVICE"):
         assert token in sources, f"notebook missing {token}"
     assert all(not c.get("outputs") for c in nb["cells"]
                if c["cell_type"] == "code"), "outputs must be cleared"
@@ -413,3 +414,132 @@ def test_prompts_module_contract():
         assert "Do not" in text  # extraction restraint in every template
     assert "trend" in prompts.PROMPTS["chart"].lower()
     assert "verdict" in prompts.PROMPTS["kpi"].lower()
+
+
+# --------------------------------------------------------------------------
+# PaddleOCR-VL-1.6 adapter + runnable notebook (no real inference here)
+# --------------------------------------------------------------------------
+def test_paddle_identity_locked_to_v16():
+    assert paddle_adapter.MODEL_ID == "PaddleOCR-VL-1.6"
+    assert paddle_adapter.PIPELINE_VERSION == "v1.6"
+    assert paddle_adapter.CANDIDATE == "paddleocr-vl"
+    ident = paddle_adapter.identity_for("3.0.0", "3.1.0", "kaggle-T4")
+    assert ident["model_id"] == "PaddleOCR-VL-1.6"
+    assert ident["pipeline_version"] == "v1.6"
+    assert ident["paddleocr_version"] == "3.0.0"
+    assert ident["device"] == "kaggle-T4"
+    for key in ("doc_orientation_classify", "doc_unwarping",
+                "layout_detection", "chart_recognition"):
+        assert "official-default" in \
+            ident["pipeline_options"][key]
+
+
+def test_paddle_adapter_text_shapes():
+    text, _, _, _, _ = paddle_adapter.adapt_output("plain ocr string")
+    assert text == "plain ocr string"
+    text, _, _, _, notes = paddle_adapter.adapt_output(
+        {"rec_texts": ["Cash", "5,087,893.71"]})
+    assert "Cash" in text and "5,087,893.71" in text
+    assert any("rec_texts" in n for n in notes)
+    text, _, _, _, _ = paddle_adapter.adapt_output(
+        {"blocks": [{"block_label": "text", "text": "TOTAL ASSETS"},
+                    {"block_label": "table", "text": ""}]})
+    assert "TOTAL ASSETS" in text
+    text, _, _, _, _ = paddle_adapter.adapt_output({"markdown": "# Title"})
+    assert text == "# Title"
+    weird, _, _, _, notes = paddle_adapter.adapt_output({"weird": 1})
+    assert weird and any("stringified" in n for n in notes)
+
+
+def test_paddle_adapter_tables_preserved():
+    grid = [["Cash", "5,087,893.71"], ["Debt", "17,842,587.42"]]
+    _, _, tables, _, _ = paddle_adapter.adapt_output({"tables": [grid]})
+    assert tables == [grid]
+    _, _, tables, _, notes = paddle_adapter.adapt_output(
+        {"tables": [{"rows": grid}]})
+    assert tables == [grid]
+    _, _, tables, _, notes = paddle_adapter.adapt_output(
+        {"tables": ["<table><tr><td>Cash</td></tr></table>"]})
+    assert tables == [[["<table><tr><td>Cash</td></tr></table>"]]]
+    _, _, tables, _, _ = paddle_adapter.adapt_output(
+        {"blocks": [{"block_label": "table", "text": "",
+                     "cells": grid}]})
+    assert tables == [grid]
+
+
+def test_paddle_session_created_once():
+    calls = []
+
+    class FakePipeline:
+        def __init__(self, pipeline_version=None):
+            calls.append(pipeline_version)
+
+    ticks = iter([100.0, 100.5, 200.0, 200.5])
+    session = paddle_adapter.PaddleSession(
+        importer=lambda: FakePipeline,
+        clock=lambda: next(ticks))
+    first, second = session.ensure(), session.ensure()
+    assert first is second
+    assert calls == ["v1.6"]  # exactly one creation, locked version
+    assert session.created
+    assert session.init_latency_ms == pytest.approx(500.0)
+
+
+def test_paddle_blocker_and_build_result_schema_valid():
+    blocked = paddle_adapter.blocker_result(
+        "DEV-004", "PADDLE_BLOCKER: paddleocr not installed", "kaggle-CPU")
+    assert schema.validate_result(blocked) == []
+    assert blocked["model_version"] == "PaddleOCR-VL-1.6"
+    assert any("BLOCKER" in w for w in blocked["warnings"])
+    ident = paddle_adapter.identity_for("3.0.0", "3.1.0", "kaggle-T4")
+    built = paddle_adapter.build_result(
+        "DEV-010", {"rec_texts": ["Cash"]}, 640.0, ident)
+    assert schema.validate_result(built) == []
+    assert built["model"] == "paddleocr-vl"
+    assert "Cash" in built["text"]
+
+
+def _notebook_paddle_section():
+    nb = json.loads((ROOT / "notebooks" / "ocr_vision_benchmark.ipynb")
+                    .read_text(encoding="utf-8"))
+    sources = "\n".join("".join(c.get("source", []))
+                        for c in nb["cells"])
+    start = sources.index("## 4. Experiment B")
+    end = sources.index("## 5. Experiment C")
+    return sources, sources[start:end]
+
+
+def test_notebook_paddle_runnable_no_placeholder():
+    sources, paddle = _notebook_paddle_section()
+    for token in ("from paddleocr import PaddleOCRVL",
+                  "pipeline_version=PADDLE_PIPELINE_VERSION",
+                  "PADDLE_PIPELINE_VERSION = 'v1.6'",
+                  "PADDLE_MODEL_ID = 'PaddleOCR-VL-1.6'",
+                  "_paddle_adapt", "init_latency_ms", "paddle_raw_",
+                  "PADDLE_DOCS = ['DEV-004', 'DEV-010']"):
+        assert token in paddle, f"paddle section missing {token}"
+    for banned in ("NotImplementedError", "fill run_paddleocr_vl",
+                   "fill `run_candidate`"):
+        assert banned not in paddle, f"placeholder remains: {banned}"
+    assert "%pip install -q paddleocr" in sources
+    assert "paddlepaddle-gpu==" not in sources  # no hard-coded CUDA wheel
+    assert "nvcc" in sources  # env reported before install guidance
+
+
+def test_notebook_still_valid_and_minimal():
+    nb_path = ROOT / "notebooks" / "ocr_vision_benchmark.ipynb"
+    assert nb_path.stat().st_size < 30 * 1024
+    nb = json.loads(nb_path.read_text(encoding="utf-8"))
+    assert nb["nbformat"] == 4
+    assert all(not c.get("outputs") for c in nb["cells"]
+               if c["cell_type"] == "code")
+
+
+def test_readme_kaggle_steps_present():
+    readme = (ROOT / "notebooks" / "README.md").read_text(encoding="utf-8")
+    for phrase in ("Internet", "CPU", "Tesseract", "GPU T4",
+                   "CUDA-matched", "DEV-004 and DEV-010",
+                   "RUN_PADDLE_OPTIONAL", "kaggle_results.json",
+                   "experiment_meta.json", "data/benchmark/results/",
+                   "score_ocr_results.py"):
+        assert phrase in readme, f"README missing: {phrase}"

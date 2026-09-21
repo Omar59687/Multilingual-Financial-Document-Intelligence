@@ -16,19 +16,35 @@ coupling ever enter this repository.
 3. Nothing else. Never upload `data/dev/` originals, canonical CSVs, or
    any credentials.
 
-## Running one experiment
+## Running the first experiment (exact steps)
 
-1. Enable GPU (⌘ Settings → Accelerator → GPU T4) only for model classes
-   B/C/D. Class A (Tesseract baseline) runs on CPU.
-2. Install exactly one candidate in the notebook session, e.g.
-   `%pip install -q paddlepaddle-gpu paddleocr` (class B) or load a
-   Qwen-VL checkpoint from Hugging Face (class C). Pin versions in the
-   notebook and record them in `model_version`.
-3. Fill in `run_candidate(image_path)` — return `(text, fields, tables,
-   visual_description)`. Keep `fields` keys aligned with the derived truth
-   (`ocr_benchmark_truth.json`) so the local scorer matches them directly.
-4. Run all cells. Download `kaggle_results.json` and place it under local
-   `data/benchmark/results/<model>-<date>.json` (git-ignored) for scoring.
+1. Create/open a Kaggle notebook and upload the export-bundle files
+   (`inputs/`, `manifest.json`, `ocr_benchmark_truth.json`,
+   `ocr_vision_benchmark.ipynb`) — easiest: upload the bundle ZIP from
+   `data/benchmark/export/` as a Kaggle Dataset and attach it.
+2. Enable Internet (≡ Settings → Internet → ON) only because the
+   PaddleOCR-VL first run downloads official model files; Tesseract
+   alone needs no Internet beyond package installs.
+3. Select **CPU** accelerator for the Tesseract baseline run.
+4. Run notebook sections 0–3 (environment → load → Tesseract) and then
+   section 6 (export). Tesseract results export independently.
+5. For the Paddle experiment: switch to (or create) a **GPU T4** session
+   with the same files attached.
+6. Run the environment cell (section 0) and confirm the GPU report.
+7. Run the Setup cell: it reports the CUDA environment first, then runs
+   `%pip install -q paddleocr`. If `import paddle` is CPU-only on the GPU
+   session, install the CUDA-matched `paddlepaddle-gpu` wheel per the
+   official install table (linked in the cell) — never guess a wheel.
+8. Run section 4 (Experiment B): DEV-004 and DEV-010 run by default;
+   leave `RUN_PADDLE_OPTIONAL = False` for the first pass (DEV-008/009
+   come later). Model init/download time is recorded separately from
+   per-document inference latency by the notebook itself.
+9. Run section 6 to write `kaggle_results.json` + `experiment_meta.json`.
+10. Download both files to local `data/benchmark/results/` (git-ignored),
+    e.g. `data/benchmark/results/paddle-vl-1.6-<date>.json`.
+11. Score locally with `python scripts/score_ocr_results.py
+    data/benchmark/results/<file>.json` and file one report per run
+    using `docs/OCR_EXPERIMENT_TEMPLATE.md`.
 
 ## Rules
 
