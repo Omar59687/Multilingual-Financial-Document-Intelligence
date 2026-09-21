@@ -148,6 +148,40 @@ def wer(reference: str, hypothesis: str, normalized: bool = True) -> float:
 # --------------------------------------------------------------------------
 # Tables: (row-label, value) association scoring
 # --------------------------------------------------------------------------
+def pairs_from_table_grid(tables: Sequence[Sequence[Sequence[str]]],
+                          expected_labels: Sequence[str]) -> list:
+    """Adapt a model's recovered grid to (label, value) pairs.
+
+    tables: list of tables; each table a list of rows; each row a list of
+    cell strings. For every expected label, takes the FIRST row whose
+    joined normalized text contains the normalized label, and the LAST
+    cell in that row that parses as an amount. Rows without a parseable
+    amount yield no pair (visible as missing labels downstream).
+    Deterministic; no guessing beyond this documented rule.
+    """
+    pairs = []
+    for label in expected_labels:
+        needle = normalize_text(label)
+        for table in tables or []:
+            matched = False
+            for row in table or []:
+                cells = [str(c) for c in row]
+                if needle and needle in normalize_text(" ".join(cells)):
+                    for cell in reversed(cells):
+                        try:
+                            normalize_amount(cell)
+                        except ValueError:
+                            continue
+                        pairs.append((label, cell))
+                        matched = True
+                        break
+                if matched:
+                    break
+            if matched:
+                break
+    return pairs
+
+
 def score_table(pred_pairs: Sequence[tuple],
                 expected_pairs: Sequence[tuple]) -> dict:
     """Score table recovery as label/value associations.

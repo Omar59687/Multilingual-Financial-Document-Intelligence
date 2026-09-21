@@ -6,7 +6,8 @@ ground-truth JSONs — programmatically, never by manual duplication:
 { document_id, language, role, tasks,
   identifiers, text_anchors, numeric_values, fields,
   tables, chart, visual_elements, question_targets, source_location,
-  table_sections, budget_verdict, unrendered_context, labels_verified }
+  table_sections, verified_pairs, budget_verdict, unrendered_context,
+  labels_verified }
 
 Production code (src/ingestion and any future OCR service) must NEVER
 import this module — guarded by test. GT paths are explicit parameters;
@@ -35,11 +36,35 @@ UNRENDERED_CONTEXT = {
     "DEV-010": ["equity_2019_context"],
 }
 
-# DEV-010 scanned sections: GT carries titles + row counts and flat numeric
-# keys, not rendered row-label strings. Grouping below follows the balance-
-# sheet section order in the frozen fixture; rendered label strings still
-# need origin-3 human verification (labels_verified=False) before
-# (label, value) association scoring runs — values score immediately.
+# DEV-010 rendered row labels, VERIFIED against the actual frozen visual
+# (data/benchmark/dataset_v0.1/inputs/DEV-010_p1.png, rendered from the
+# frozen DEV-010 PDF): (visible label, GT field key) in visual order.
+# The "Total liabilities + Equity = ..." line is a printed check equation,
+# not a scored row. Equation holds: 29,014,808.77 + 25,945,183.96 =
+# 54,959,992.73. Row counts (5/3/1) match GT expected_tables.
+DEV010_VERIFIED_LABELS = [
+    ("Cash", "cash"),
+    ("Accounts receivable", "accounts_receivable"),
+    ("Inventory", "inventory"),
+    ("Other current assets", "other_current_assets"),
+    ("Property and equipment (net)", "property_and_equipment"),
+    ("TOTAL ASSETS", "total_assets"),
+    ("Accounts payable", "accounts_payable"),
+    ("Debt", "debt"),
+    ("Other liabilities", "other_liabilities"),
+    ("TOTAL LIABILITIES", "total_liabilities"),
+    ("EQUITY", "equity"),
+]
+
+
+def dev010_expected_pairs(numerics: dict) -> list:
+    """(label, value) associations for DEV-010 table scoring, in visual
+    order. Values come from frozen GT (the render was verified to show
+    exactly these); labels are the verified visible strings above."""
+    return [(label, numerics[field])
+            for label, field in DEV010_VERIFIED_LABELS]
+
+
 DEV010_SECTIONS = [
     ("Assets", ["cash", "accounts_receivable", "inventory",
                 "other_current_assets", "property_and_equipment"],
@@ -58,6 +83,8 @@ def load_gt(gt_path) -> dict:
 def derive_truth(gt: dict, role: str, tasks: list) -> dict:
     """Project one frozen GT record onto the scoring representation."""
     dev_id = gt["dev_id"]
+    verified_pairs = None
+    labels_verified = False
     sectioned = None
     if dev_id == "DEV-010":
         numerics = gt.get("expected_numeric_values") or {}
@@ -70,6 +97,10 @@ def derive_truth(gt: dict, role: str, tasks: list) -> dict:
                   if t.get("title") == title), None)}
             for title, keys, total in DEV010_SECTIONS
         ]
+        verified_pairs = dev010_expected_pairs(numerics)
+        labels_verified = True  # visible strings checked against the
+        # frozen render (see DEV010_VERIFIED_LABELS); association scoring
+        # is valid for DEV-010 from here on.
     budget_verdict = None
     if dev_id == "DEV-009":
         numerics = gt.get("expected_numeric_values") or {}
@@ -92,7 +123,8 @@ def derive_truth(gt: dict, role: str, tasks: list) -> dict:
         "fields": list(gt.get("expected_fields") or []),
         "tables": gt.get("expected_tables"),
         "table_sections": sectioned,
-        "labels_verified": False,
+        "labels_verified": labels_verified,
+        "verified_pairs": verified_pairs,
         "chart": gt.get("expected_chart_data"),
         "visual_elements": gt.get("expected_visual_elements"),
         "question_targets": list(gt.get("expected_question_targets") or []),
@@ -118,3 +150,16 @@ def scorable_numerics(truth: dict) -> dict:
     skip = set(truth.get("unrendered_context") or [])
     return {k: v for k, v in (truth.get("numeric_values") or {}).items()
             if k not in skip}
+
+
+def expected_table_pairs(truth: dict) -> list:
+    """Verified (label, value) pairs for association scoring.
+
+    Raises unless labels_verified is True — association scoring without
+    verified visible labels is invalid (architect decision 4).
+    """
+    if not truth.get("labels_verified") or not truth.get("verified_pairs"):
+        raise ValueError(
+            f"table association truth not verified for "
+            f"{truth.get('document_id')}")
+    return [(label, value) for label, value in truth["verified_pairs"]]

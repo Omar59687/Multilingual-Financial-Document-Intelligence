@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from ocrbench import metrics, normalize, schema, truth  # noqa: E402
+from ocrbench import metrics, normalize, prompts, schema, truth  # noqa: E402
 from prepare_ocr_benchmark import build_workspace  # noqa: E402
 
 DOCS = ROOT / "data" / "dev" / "dataset_v0.1" / "documents"
@@ -96,7 +96,7 @@ def test_derived_truth_matches_frozen_gt():
     sections = derived["DEV-010"]["table_sections"]
     assert [s["title"] for s in sections] == \
         ["Assets", "Liabilities", "Equity"]
-    assert derived["DEV-010"]["labels_verified"] is False
+    assert derived["DEV-010"]["labels_verified"] is True
 
 
 def test_scorable_numerics_excludes_context():
@@ -258,9 +258,158 @@ def test_notebook_is_minimal_and_valid():
     assert nb["nbformat"] == 4
     sources = "\n".join("".join(c.get("source", []))
                         for c in nb["cells"])
-    for token in ("run_candidate", "kaggle_results.json", "latency_ms",
-                  "MODEL_VERSION", "DEVICE"):
+    for token in ("run_paddleocr_vl", "kaggle_results.json", "latency_ms",
+                   "PADDLE_MODEL_ID", "DEVICE"):
         assert token in sources, f"notebook missing {token}"
     assert all(not c.get("outputs") for c in nb["cells"]
                if c["cell_type"] == "code"), "outputs must be cleared"
     assert "safetensors" not in sources and ".bin" not in sources
+
+
+# --------------------------------------------------------------------------
+# First-experiment additions: verified labels, grid adapter, scoring
+# script, export bundle, notebook sections, prompts
+# --------------------------------------------------------------------------
+def test_dev010_verified_pairs_match_frozen_values():
+    derived = truth.derive_all(GT)
+    assert derived["DEV-010"]["labels_verified"] is True
+    pairs = truth.expected_table_pairs(derived["DEV-010"])
+    assert len(pairs) == 11
+    numerics = frozen("DEV-010")["expected_numeric_values"]
+    for label, value in pairs:
+        field = dict(truth.DEV010_VERIFIED_LABELS)[label]
+        assert value == numerics[field], label
+    with pytest.raises(ValueError):
+        truth.expected_table_pairs(derived["DEV-002"])  # unverified
+
+
+def test_pairs_from_table_grid():
+    grid = [[["Cash", "5,087,893.71"],
+             ["TOTAL ASSETS", "54,959,992.73"],
+             ["Debt", "no amount here"]]]
+    pairs = metrics.pairs_from_table_grid(
+        grid, ["Cash", "TOTAL ASSETS", "Debt"])
+    assert ("Cash", "5,087,893.71") in pairs
+    assert ("TOTAL ASSETS", "54,959,992.73") in pairs
+    assert all(label != "Debt" for label, _ in pairs)
+    scored = metrics.score_table(
+        pairs, [("Cash", "5087893.71"),
+                ("TOTAL ASSETS", "54959992.73")])
+    assert scored["association_accuracy"] == 1.0
+
+
+def _mock_dev004_result():
+    t = truth.derive_all(GT)["DEV-004"]
+    return schema.blank_result("tesseract", "5.4.1", "cpu", "DEV-004") | {
+        "latency_ms": 812.0,
+        "text": " ".join(t["text_anchors"]),
+        "fields": {"transaction_id": "TX-2019-013526", "amount": "24371.25",
+                   "tax_amount": "3655.69", "total_amount": "28026.94"},
+    }
+
+
+def _mock_dev010_result():
+    t = truth.derive_all(GT)["DEV-010"]
+    grid = [[list(pair) for pair in
+             truth.expected_table_pairs(t)]]
+    return schema.blank_result("tesseract", "5.4.1", "cpu", "DEV-010") | {
+        "latency_ms": 640.0,
+        "text": "Statement of Financial Position TOTAL ASSETS 54,959,992.73",
+        "fields": dict(t["numeric_values"]),
+        "tables": grid,
+    }
+
+
+def test_scoring_script_on_synthetic_results():
+    import score_ocr_results as scorer
+    all_truth = truth.derive_all(GT)
+    s4 = scorer.score_result(_mock_dev004_result(), all_truth)
+    assert s4["schema_errors"] == []
+    assert s4["identifiers"]["accuracy"] == 1.0
+    assert s4["numerics_exact"]["accuracy"] == 1.0
+    assert s4["anchors"]["recall"] == 1.0
+    s10 = scorer.score_result(_mock_dev010_result(), all_truth)
+    assert s10["table"]["association_accuracy"] == 1.0
+    summary = scorer.summarize([s4, s10])
+    assert summary["n_documents"] == 2
+    assert summary["mean_numeric_exact_accuracy"] == 1.0
+    assert summary["mean_table_association_accuracy"] == 1.0
+    assert "overall_score" not in summary  # never a combined score
+    assert summary["latency_ms"] == [812.0, 640.0]
+
+
+def test_tolerance_diagnostic_never_replaces_exact():
+    import score_ocr_results as scorer
+    all_truth = truth.derive_all(GT)
+    off = _mock_dev004_result()
+    off["fields"]["total_amount"] = "28027.00"  # +0.06, within ±0.5%
+    scored = scorer.score_result(off, all_truth)
+    assert scored["numerics_exact"]["per_field"]["total_amount"] is False
+    assert scored["numerics_tol_diagnostic"]["accuracy"] > \
+        scored["numerics_exact"]["accuracy"]
+    assert any(m["field"] == "total_amount"
+               for m in scored["numerics_exact"]["misses"])
+
+
+def test_result_metadata_preserves_model_identity():
+    import score_ocr_results as scorer
+    all_truth = truth.derive_all(GT)
+    result = _mock_dev004_result()
+    result.update({"model": "paddleocr-vl",
+                   "model_version": "PaddleOCR-VL-1.6",
+                   "device": "kaggle-T4"})
+    scored = scorer.score_result(result, all_truth)
+    assert (scored["model"], scored["model_version"],
+            scored["device"]) == ("paddleocr-vl", "PaddleOCR-VL-1.6",
+                                  "kaggle-T4")
+    broken = dict(result)
+    del broken["fields"]
+    assert scorer.score_result(broken, all_truth)["schema_errors"]
+
+
+def test_export_bundle_allowlist(tmp_path):
+    from export_kaggle_bundle import build_export
+    out = tmp_path / "bundle.zip"
+    report = build_export(ROOT / "data" / "benchmark" / "dataset_v0.1",
+                          ROOT / "notebooks", out)
+    import zipfile
+    names = zipfile.ZipFile(out).namelist()
+    prefix = "mizaniq-ocr-benchmark-v0.1/"
+    assert all(n.startswith(prefix) for n in names)
+    inner = sorted(n[len(prefix):] for n in names)
+    assert inner == sorted([
+        "inputs/DEV-002_p1.png", "inputs/DEV-003_p1.png",
+        "inputs/DEV-004.png", "inputs/DEV-008.png",
+        "inputs/DEV-009.jpg", "inputs/DEV-010_p1.png",
+        "manifest.json", "ocr_benchmark_truth.json",
+        "ocr_vision_benchmark.ipynb", "README_KAGGLE.md",
+        "PROMPTS.md", "RESULT_SCHEMA.json"])
+    assert report["size_bytes"] < 10 * 1024 * 1024
+    banned = (".csv", ".pt", ".bin", ".safetensors", ".env")
+    assert not any(n.endswith(b) for n in names for b in banned)
+    assert "ground_truth" not in "\n".join(names)
+
+
+def test_notebook_experiment_sections():
+    nb = json.loads((ROOT / "notebooks" / "ocr_vision_benchmark.ipynb")
+                    .read_text(encoding="utf-8"))
+    sources = "\n".join("".join(c.get("source", []))
+                        for c in nb["cells"])
+    for section in ("0. Environment", "1. Load benchmark",
+                    "2. Common result", "3. Experiment A",
+                    "4. Experiment B", "5. Experiment C", "6. Export"):
+        assert section in sources, f"notebook missing {section}"
+    for token in ("PaddleOCR-VL-1.6", "Qwen/Qwen3-VL-8B-Instruct",
+                  "Qwen/Qwen3-VL-4B-Instruct", "RUN_EXPERIMENT_C",
+                  "experiment_meta.json",
+                  "Transcribe all visible text faithfully"):
+        assert token in sources, f"notebook missing {token}"
+
+
+def test_prompts_module_contract():
+    assert set(prompts.PROMPTS) == {"ocr", "table", "chart", "kpi"}
+    assert set(prompts.DOC_PROMPTS) == set(truth.BENCHMARK_DOCS)
+    for text in prompts.PROMPTS.values():
+        assert "Do not" in text  # extraction restraint in every template
+    assert "trend" in prompts.PROMPTS["chart"].lower()
+    assert "verdict" in prompts.PROMPTS["kpi"].lower()

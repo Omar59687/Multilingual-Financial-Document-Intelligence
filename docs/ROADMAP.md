@@ -7,7 +7,10 @@ AI-Powered Finance Document Intelligence System
 ## Current Status
 
 - Current phase: **Phase 2 — OCR and Visual Document Understanding**
-- Current task: OCR/vision benchmark preparation and candidate evaluation
+- Current task: First OCR/document-understanding benchmark experiment
+  (Tesseract baseline → PaddleOCR-VL-1.6 → optional Qwen3-VL; harness in
+  [OCR_VISION_DESIGN.md](OCR_VISION_DESIGN.md), report template in
+  [OCR_EXPERIMENT_TEMPLATE.md](OCR_EXPERIMENT_TEMPLATE.md))
 - Phase 1 status: COMPLETE (freeze record:
   [PHASE_1_FREEZE.md](PHASE_1_FREEZE.md), 2026-09-20; 56/56 tests
   passing; all 17 exit criteria met) — Phase 2 must not regress it
