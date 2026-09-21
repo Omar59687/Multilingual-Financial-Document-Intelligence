@@ -6,11 +6,13 @@ AI-Powered Finance Document Intelligence System
 
 ## Current Status
 
-- Current phase: **Phase 1 — COMPLETE** (freeze record:
+- Current phase: **Phase 2 — OCR and Visual Document Understanding**
+- Current task: OCR/vision benchmark preparation and candidate evaluation
+- Phase 1 status: COMPLETE (freeze record:
   [PHASE_1_FREEZE.md](PHASE_1_FREEZE.md), 2026-09-20; 56/56 tests
-  passing; all 17 exit criteria met)
-- Next phase: Phase 2 — OCR and Visual Document Understanding
-- Current task: Not started — awaiting architect implementation prompt
+  passing; all 17 exit criteria met) — Phase 2 must not regress it
+- Benchmark design: [OCR_VISION_DESIGN.md](OCR_VISION_DESIGN.md) (escalation
+  architecture, candidate classes, fixtures, metrics, Kaggle plan)
 - Implementation status: Phase-1 native ingestion implemented
   (`src/ingestion/`, design in [INGESTION_DESIGN.md](INGESTION_DESIGN.md));
   OCR/RAG/forecasting/UI explicitly out of scope until later phases
@@ -50,6 +52,10 @@ Focus first on normal/native extraction.
 Build metadata/manifests.
 
 ## Phase 2 — OCR and Visual Document Understanding
+
+Status: **IN PROGRESS — benchmark preparation** (design:
+[OCR_VISION_DESIGN.md](OCR_VISION_DESIGN.md); NOT complete; no production
+OCR integrated yet).
 
 Add support for:
 

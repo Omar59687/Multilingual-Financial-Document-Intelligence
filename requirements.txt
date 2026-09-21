@@ -16,3 +16,9 @@ arabic-reshaper==3.0.0
 python-bidi==0.6.7
 pypdf==6.6.0
 pypdfium2==5.6.0
+# pdfplumber is a Phase-1 parser dependency (NOT optional): src/ingestion/
+# parsers.py uses pdfplumber.open + page.find_tables(lattice settings) +
+# Table.extract() for ruled-grid PDF tables, and scripts/prepare_ocr_benchmark
+# + tests rely on pypdfium2 page rendering. Pin exact: lattice geometry and
+# extract() output changed across pdfplumber minors before.
+pdfplumber==0.11.9
