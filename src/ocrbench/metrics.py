@@ -1,5 +1,20 @@
 """OCR/vision scoring primitives (evaluation-side, stdlib only).
 
+Two independent layers — NEVER merged or averaged:
+
+  LAYER A — RECOGNITION ("did the model see it in raw text?"):
+    identifier_text_accuracy (score_identifier_text),
+    numeric_text_exact_accuracy (score_numeric_text),
+    table_label_text_recall (score_table_label_text).
+    Raw OCR with no fields/tables CAN score here.
+
+  LAYER B — STRUCTURING ("did the model attach it to the right
+  field/row?"):
+    identifier_structured_accuracy (score_identifiers),
+    numeric_structured_exact_accuracy (score_numerics, exact),
+    table_association_accuracy (score_table).
+    Requires populated fields/tables; prose mentions do NOT count.
+
 Conventions (see docs/OCR_VISION_DESIGN.md §6, EVALUATION_PLAN §3):
   - identifiers: exact after outer-whitespace strip (hyphens/case matter).
   - numerics: Decimal-2dp equality; every miss listed expected-vs-got.
@@ -12,12 +27,62 @@ Conventions (see docs/OCR_VISION_DESIGN.md §6, EVALUATION_PLAN §3):
 
 from decimal import Decimal
 from typing import Mapping, Optional, Sequence
+import re
 
 from .normalize import normalize_amount, normalize_text
 
 
 # --------------------------------------------------------------------------
-# Identifiers
+# LAYER A — RECOGNITION vs LAYER B — STRUCTURING
+#
+# Recognition (text) metrics ask: "did the model visibly recover this
+# string/number/label somewhere in its raw text?" Structuring (field)
+# metrics ask: "did the model associate it with the correct semantic
+# field/table row?" A raw OCR engine MUST get recognition credit without
+# field/table objects, and MUST NOT get structured credit it did not
+# produce. The two layers are never merged or averaged.
+# --------------------------------------------------------------------------
+def identifier_in_text(pred_text: str, expected: str) -> bool:
+    """Strict substring check for one identifier in raw OCR text.
+
+    Both sides go through normalize_text (whitespace collapse + documented
+    Arabic folding) but NOTHING else: hyphens, case, and digit values stay
+    significant; no fuzzy matching; no GT-driven parser logic.
+    """
+    if pred_text is None or expected is None:
+        return False
+    needle = normalize_text(expected)
+    if not needle:
+        return False
+    return needle in normalize_text(pred_text or "")
+
+
+def score_identifier_text(pred_text: str, expected: Mapping) -> dict:
+    """LAYER A for identifiers: per-identifier text-presence scoring.
+
+    Returns {per_field, n_total, n_correct, accuracy, misses} where misses
+    list {field, expected, found_in_text: False}. This is the recognition
+    companion to score_identifiers (which remains the LAYER B structured
+    score and is reported as identifier_structured_accuracy).
+    """
+    per_field = {k: identifier_in_text(pred_text or "", v)
+                 for k, v in (expected or {}).items()}
+    total = len(per_field)
+    correct = sum(1 for v in per_field.values() if v)
+    return {
+        "per_field": per_field,
+        "n_total": total,
+        "n_correct": correct,
+        "accuracy": (correct / total) if total else 1.0,
+        "misses": [{"field": k, "expected": expected[k],
+                    "found_in_text": False}
+                   for k, v in per_field.items() if not v],
+    }
+
+
+# --------------------------------------------------------------------------
+# Identifiers — LAYER B (structured) is score_identifiers; LAYER A
+# (recognition) is score_identifier_text above.
 # --------------------------------------------------------------------------
 def identifier_match(pred: str, expected: str) -> bool:
     """Byte-exact modulo outer whitespace. No case/hyphen folding, ever."""
@@ -27,7 +92,10 @@ def identifier_match(pred: str, expected: str) -> bool:
 
 
 def score_identifiers(pred_fields: Mapping, expected: Mapping) -> dict:
-    """Exact-match per identifier field: {per_field, accuracy, misses}."""
+    """LAYER B structured identifier score (reported as
+    identifier_structured_accuracy). Exact-match per identifier field:
+    {per_field, accuracy, misses}. Raw text presence does NOT count here —
+    use score_identifier_text (identifier_text_accuracy) for Layer A."""
     per_field = {k: identifier_match(pred_fields.get(k), v)
                  for k, v in expected.items()}
     total = len(per_field)
@@ -44,14 +112,19 @@ def score_identifiers(pred_fields: Mapping, expected: Mapping) -> dict:
 
 
 # --------------------------------------------------------------------------
-# Numerics
+# Numerics — LAYER B (structured) is score_numerics; LAYER A (recognition)
+# is score_numeric_text below.
 # --------------------------------------------------------------------------
 def score_numerics(pred_fields: Mapping, expected: Mapping,
                    rel_tol: Optional[float] = None) -> dict:
-    """2dp-exact per numeric field. rel_tol (e.g. 0.005) is an explicit
-    opt-in for OCR-noise slices only; default None = exact.
+    """LAYER B structured numeric score (reported as
+    numeric_structured_exact_accuracy when rel_tol is None). 2dp-exact per
+    numeric field. rel_tol (e.g. 0.005) is an explicit opt-in for OCR-noise
+    slices only; default None = exact.
 
     Every miss is listed with expected vs. got (EVALUATION_PLAN §3).
+    A correct number existing somewhere in raw prose does NOT count here —
+    use score_numeric_text (numeric_text_exact_accuracy) for Layer A.
     """
     per_field, misses = {}, []
     for field, exp_raw in expected.items():
@@ -77,6 +150,77 @@ def score_numerics(pred_fields: Mapping, expected: Mapping,
             misses.append({"field": field, "expected": str(exp),
                            "got": (str(got) if got is not None
                                    else repr(got_raw))})
+    total = len(per_field)
+    correct = sum(1 for v in per_field.values() if v)
+    return {
+        "per_field": per_field,
+        "n_total": total,
+        "n_correct": correct,
+        "accuracy": (correct / total) if total else 1.0,
+        "misses": misses,
+    }
+
+
+# Matches one Western or Arabic-Indic digit, then a run of digits and
+# intra-number separators (comma, period, Arabic separators, grouping
+# space/NBSP), ending on a digit — plus a lone-digit fallback. Newlines,
+# letters, hyphens, and currency words are NOT part of a token, so dates
+# like 2019-06-09 split into 2019 / 06 / 09 and "24,371.25 SAR" yields
+# "24,371.25". Every candidate is validated by normalize_amount; the
+# regex never decides equality by itself.
+_AMOUNT_TOKEN_RE = re.compile(
+    r"[0-9\u0660-\u0669\u06F0-\u06F9]"
+    r"[0-9\u0660-\u0669\u06F0-\u06F9,.\u066B\u066C \u00A0]*"
+    r"[0-9\u0660-\u0669\u06F0-\u06F9]"
+    r"|[0-9\u0660-\u0669\u06F0-\u06F9]")
+
+
+def amounts_in_text(pred_text: str) -> set:
+    """All 2dp-normalized amounts recoverable from raw OCR text.
+
+    Each regex candidate is parsed with normalize_amount (same 2dp
+    Decimal rules as structured scoring: ','/space/NBSP grouping removed,
+    SAR tokens stripped, Arabic-Indic digits folded). Unparseable
+    candidates are skipped. Digit substitutions NEVER match: equality is
+    exact Decimal equality.
+    """
+    found = set()
+    for match in _AMOUNT_TOKEN_RE.finditer(pred_text or ""):
+        try:
+            found.add(normalize_amount(match.group(0)))
+        except ValueError:
+            continue
+    return found
+
+
+def score_numeric_text(pred_text: str, expected: Mapping) -> dict:
+    """LAYER A for numerics (reported as numeric_text_exact_accuracy).
+
+    For each expected value: credit iff its canonical 2dp Decimal occurs
+    among amounts_in_text(pred_text). "24,371.25" and "24371.25" are the
+    same visible value (grouping-insensitive); "28026.95" never matches
+    "28026.94" (no digit tolerance); ±0.5% is NEVER applied here — it
+    remains a secondary structured diagnostic only.
+
+    Means: "the model saw this correct number somewhere." It does NOT
+    mean the number was assigned to the correct field (Layer B).
+    """
+    found = amounts_in_text(pred_text or "")
+    per_field, misses = {}, []
+    for field, exp_raw in (expected or {}).items():
+        try:
+            exp = normalize_amount(exp_raw)
+        except ValueError:
+            per_field[field] = False
+            misses.append({"field": field, "expected": exp_raw,
+                           "found_in_text": False,
+                           "reason": "bad expected value"})
+            continue
+        ok = exp in found
+        per_field[field] = ok
+        if not ok:
+            misses.append({"field": field, "expected": str(exp),
+                           "found_in_text": False})
     total = len(per_field)
     correct = sum(1 for v in per_field.values() if v)
     return {
@@ -218,6 +362,34 @@ def score_table(pred_pairs: Sequence[tuple],
         "value_accuracy": (value_ok / matched) if matched else 0.0,
         "association_accuracy": (assoc_ok / total) if total else 1.0,
         "missing_labels": missing_labels,
+    }
+
+
+def score_table_label_text(pred_text: str,
+                            expected_labels: Sequence[str]) -> dict:
+    """LAYER A for tables (reported as table_label_text_recall).
+
+    For each expected visible row label (e.g. "Cash", "TOTAL ASSETS",
+    "Debt"): credit iff its normalized form occurs as a substring of the
+    normalized recovered OCR text. No table object is required — raw text
+    containing "Cash ... 5,087,893.71" passes here even with tables == [].
+    Structured credit (table_association_accuracy, Layer B) still requires
+    a correct (label, value) pair via score_table.
+    """
+    hay = normalize_text(pred_text or "")
+    found = [label for label in (expected_labels or [])
+             if normalize_text(label) and normalize_text(label) in hay]
+    missing = [label for label in (expected_labels or [])
+               if not (normalize_text(label)
+                       and normalize_text(label) in hay)]
+    total = len(list(expected_labels or []))
+    return {
+        "n_expected_labels": total,
+        "n_found_labels": len(found),
+        "label_text_recall": (len(found) / total) if total else 1.0,
+        "recall": (len(found) / total) if total else 1.0,
+        "found": found,
+        "missing": missing,
     }
 
 

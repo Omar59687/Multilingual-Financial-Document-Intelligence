@@ -121,15 +121,56 @@ programmatically from frozen GT — no manual duplication, no giant files:
 
 ## 6. Scoring (implemented in `src/ocrbench/`, stdlib-only)
 
-- **Identifiers:** normalized exact-match — strip outer whitespace only;
+Two independent layers — NEVER merged, averaged, or combined into one
+overall score:
+
+**LAYER A — RECOGNITION** ("did the model visibly recover it in raw
+text?"):
+
+- **identifier_text_accuracy** (`score_identifier_text`): strict
+  substring presence of each expected identifier in `result["text"]`
+  (whitespace/Arabic normalization only; hyphens, case, and digit values
+  stay significant; no fuzzy matching; no GT-driven parser). A raw OCR
+  engine with empty `fields` CAN score here.
+- **numeric_text_exact_accuracy** (`score_numeric_text`): each expected
+  value credited iff its canonical 2dp Decimal occurs among the amounts
+  parseable from raw text. `24,371.25` == `24371.25` (grouping-insensitive);
+  digit substitutions NEVER match; ±0.5% is NEVER applied at this layer.
+  Means "the model saw this correct number somewhere."
+- **table_label_text_recall** (`score_table_label_text`): each expected
+  visible row label (e.g. `Cash`, `TOTAL ASSETS`, `Debt`) credited iff its
+  normalized form occurs in raw text. No table object required.
+
+**LAYER B — STRUCTURING** ("did the model attach it to the right
+field/row?"):
+
+- **identifier_structured_accuracy** (`score_identifiers`): exact
+  field-value match in `result["fields"]` (legacy `identifiers` alias kept).
+- **numeric_structured_exact_accuracy** (`score_numerics`, exact;
+  legacy `numerics_exact` alias kept): 2dp `Decimal` equality per field
+  after amount normalization; every miss listed expected-vs-got. Means
+  "the model assigned this correct number to the correct field."
+- **table_association_accuracy** (`score_table`): (row-label, value)
+  associations — right digits on the wrong row = incorrect.
+
+A model NEVER gets structured credit merely because the correct number
+exists somewhere in its prose. A raw OCR engine is NEVER denied
+recognition credit merely because it returned unstructured text.
+
+- **Identifiers (structured):** normalized exact-match — strip outer whitespace only;
   hyphens and case are significant (`INV-2023-0106` ≠ `INV20230106`).
-- **Numerics:** 2dp `Decimal` equality after amount normalization
+- **Numerics (structured):** 2dp `Decimal` equality after amount normalization
   (thousands separators, whitespace, SAR/`ر.س` tokens removed); every
   miss is listed expected-vs-got (EVALUATION_PLAN §3: numeric errors are
   their own error class). The ±0.5% OCR tolerance from EVALUATION_PLAN
-  §3 is supported as an *explicit opt-in flag*, never the default.
+  §3 is supported as an *explicit opt-in flag*, never the default, and is
+  a secondary diagnostic only.
 - **Anchors:** normalized-substring recall over `text_anchors`.
 - **CER/WER:** Levenshtein-based, reported raw AND normalized.
+  CER/WER computed against anchor concatenations are DIAGNOSTICS, not
+  full-document OCR accuracy — no complete reference transcription
+  exists for these fixtures, so they measure noise on the anchor slice
+  only.
 - **Arabic normalization** (`normalize.py`, documented rules):
   NFKC (folds Arabic-Indic ٠–٩ and Persian ۰–۹ to Western digits) →
   strip tatweel (U+0640) → strip diacritics (U+064B–U+0652 et al.) →
@@ -150,6 +191,29 @@ All candidates emit the standard result schema (§9 of the task spec —
 `model, model_version, device, document_id, latency_ms, text, fields,
 tables, visual_description, warnings`) validated by
 `src/ocrbench/schema.py`, so one scorer compares every approach.
+
+## 6b. Fair model comparison (recognition-first, then structuring)
+
+Traditional OCR engines (class A) are judged FIRST on recognition
+(Layer A): identifier/numeric text accuracy, anchor recall, label-text
+recall. Empty `fields`/`tables` is expected — not a penalty at Layer A.
+
+Layout / document-understanding models (class B) are judged on BOTH
+layers: recognition AND structuring (correct field/row association).
+
+Vision-language models (class C) may ADDITIONALLY be evaluated on
+semantic interpretation (trend, verdict, ranking) — numeric faithfulness
+still gates acceptance.
+
+Consequences enforced by the scorer:
+
+1. Correct digits in prose earn text credit but ZERO structured credit
+   without the right field/row.
+2. Recognition and structuring aggregates are reported side by side and
+   NEVER averaged into one score.
+3. The report columns `id_text / id_struct / num_text / num_struct /
+   anchor / label_text / association` make the distinction obvious; `-`
+   marks non-applicable metrics.
 
 ## 7. Experiment workflow (Kaggle GPU lab)
 

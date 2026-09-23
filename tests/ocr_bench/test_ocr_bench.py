@@ -543,3 +543,117 @@ def test_readme_kaggle_steps_present():
                    "experiment_meta.json", "data/benchmark/results/",
                    "score_ocr_results.py"):
         assert phrase in readme, f"README missing: {phrase}"
+
+
+# --------------------------------------------------------------------------
+# Recognition (Layer A) vs structuring (Layer B) — independent by design
+# --------------------------------------------------------------------------
+def test_a_raw_text_id_gets_text_credit_not_structured():
+    """A: raw text with the correct ID earns identifier_text but NOT
+    identifier_structured credit (no fields populated)."""
+    expected = {"transaction_id": "TX-2019-013526"}
+    text_hit = metrics.score_identifier_text(
+        "asl TX-2019-013526 Coil as", expected)
+    assert text_hit["accuracy"] == 1.0
+    assert text_hit["per_field"]["transaction_id"] is True
+    struct_miss = metrics.score_identifiers({}, expected)
+    assert struct_miss["accuracy"] == 0.0
+    # Strictness: hyphen/case variants still fail at BOTH layers.
+    assert metrics.score_identifier_text(
+        "TX2019013526", expected)["accuracy"] == 0.0
+    assert metrics.score_identifier_text(
+        "tx-2019-013526", expected)["accuracy"] == 0.0
+
+
+def test_b_grouped_number_matches_canonical():
+    """B: '24,371.25' in raw text matches expected '24371.25'."""
+    assert metrics.score_numeric_text(
+        "adsl 24,371.25 SAR", {"amount": "24371.25"})["accuracy"] == 1.0
+    assert metrics.score_numeric_text(
+        "adsl 24371.25 SAR", {"amount": "24371.25"})["accuracy"] == 1.0
+
+
+def test_c_wrong_digit_gets_no_recognition_credit():
+    """C: a single wrong digit earns NO exact numeric recognition credit."""
+    scored = metrics.score_numeric_text(
+        "les 28,026.95 SAR", {"total_amount": "28026.94"})
+    assert scored["accuracy"] == 0.0
+    assert scored["per_field"]["total_amount"] is False
+    assert scored["misses"] == [{"field": "total_amount",
+                                 "expected": "28026.94",
+                                 "found_in_text": False}]
+
+
+def test_d_right_number_wrong_field_splits_layers():
+    """D: correct number visible in text but filed under the wrong key —
+    text score passes, structured score fails."""
+    text_ok = metrics.score_numeric_text(
+        "Cash 5,087,893.71", {"cash": "5087893.71"})
+    assert text_ok["accuracy"] == 1.0
+    struct_bad = metrics.score_numerics(
+        {"cash": "54959992.73"},  # right digits, wrong row value
+        {"cash": "5087893.71"})
+    assert struct_bad["accuracy"] == 0.0
+    assert struct_bad["misses"] == [{"field": "cash",
+                                     "expected": "5087893.71",
+                                     "got": "54959992.73"}]
+
+
+def test_e_labels_in_text_without_table_split_layers():
+    """E: correct labels in raw text but tables == [] — label_text recall
+    passes while structured association stays zero."""
+    labels = ["Cash", "Debt", "TOTAL ASSETS"]
+    text = "Cash 5,087,893.71 Debt 17,842,587.42 TOTAL ASSETS 54,959,992.73"
+    label_text = metrics.score_table_label_text(text, labels)
+    assert label_text["label_text_recall"] == 1.0
+    assert label_text["missing"] == []
+    assoc = metrics.score_table(
+        metrics.pairs_from_table_grid([], labels),
+        [("Cash", "5087893.71"), ("Debt", "17842587.42"),
+         ("TOTAL ASSETS", "54959992.73")])
+    assert assoc["association_accuracy"] == 0.0
+    assert assoc["n_matched_labels"] == 0
+
+
+def test_f_tesseract_like_raw_result_scores_without_fields():
+    """F: a Tesseract-like raw result (fields={}, tables=[]) scores
+    recognition without structured objects and gets no free structuring."""
+    import score_ocr_results as scorer
+    all_truth = truth.derive_all(GT)
+    raw4 = schema.blank_result("tesseract", "tesseract 4.1.1",
+                               "kaggle-CPU", "DEV-004") | {
+        "latency_ms": 602.0,
+        "text": "adsl 24,371.25 SAR les 28,026.94 SAR asl TX-2019-013526",
+        "fields": {},
+        "tables": [],
+    }
+    assert schema.validate_result(raw4) == []
+    s4 = scorer.score_result(raw4, all_truth)
+    assert s4["identifiers_text"]["accuracy"] == 1.0
+    assert s4["identifiers_structured"]["accuracy"] == 0.0
+    assert s4["numerics_text_exact"]["accuracy"] == pytest.approx(2 / 3)
+    assert s4["numerics_structured_exact"]["accuracy"] == 0.0
+    raw10 = schema.blank_result("tesseract", "tesseract 4.1.1",
+                                "kaggle-CPU", "DEV-010") | {
+        "latency_ms": 855.0,
+        "text": ("Cash 5,087,893.71 Accounts receivable 7,574,649.52 "
+                 "Inventory 9,606,420.63 Other current assets 1,740,159.33 "
+                 "Property and equipment (net) 30,950,869.54 "
+                 "TOTAL ASSETS 54,959,992.73 Accounts payable 8,596,533.78 "
+                 "Debt 17,842,587.42 Other liabilities 2,575,687.57 "
+                 "TOTAL LIABILITIES 29,014,808.77 EQUITY 25,945,183.96"),
+        "fields": {},
+        "tables": [],
+    }
+    s10 = scorer.score_result(raw10, all_truth)
+    assert s10["table_label_text"]["label_text_recall"] == 1.0
+    assert s10["table"]["association_accuracy"] == 0.0
+    assert s10["numerics_text_exact"]["per_field"]["total_assets"] is True
+    assert s10["numerics_structured_exact"]["accuracy"] == 0.0
+    summary = scorer.summarize([s4, s10])
+    assert summary["mean_identifier_text_accuracy"] == 1.0
+    assert summary["mean_identifier_structured_accuracy"] == 0.0
+    assert summary["mean_numeric_structured_exact_accuracy"] == 0.0
+    assert summary["mean_table_label_text_recall"] == 1.0
+    assert summary["mean_table_association_accuracy"] == 0.0
+    assert "overall_score" not in summary
