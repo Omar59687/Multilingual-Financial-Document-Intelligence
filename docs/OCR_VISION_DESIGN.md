@@ -68,8 +68,9 @@ Rules:
 - **No exact model/size is hard-locked in this document.** The benchmark
   (§4–§7) exists precisely so sizes are chosen from measured deltas.
 - Local status: no OCR engine is installed in this environment
-  (Tesseract binary absent; see §8), so the class-A baseline is PENDING
-  until the first Kaggle experiment.
+  (Tesseract binary absent; see §8). The class-A baseline was PENDING
+  until the first Kaggle experiment — that experiment has now run (see
+  §10). Local installs are still out of scope; Kaggle remains the lab.
 
 ## 4. Benchmark fixtures (frozen `dataset_v0.1`, never modified)
 
@@ -239,3 +240,77 @@ TBD after baselines; one variable per ablation).
 
 Production OCR/VLM integration, embeddings, Qdrant, BM25, reranking,
 answer generation, Streamlit, heavy weight downloads, CUDA setup.
+
+## 10. First real Phase 2 OCR benchmark (measured — do not edit values)
+
+Environment (Kaggle): PaddlePaddle 3.2.1, PaddleOCR 3.7.0, CUDA enabled,
+Tesla T4. Pipeline: `PaddleOCRVL(pipeline_version="v1.6")`.
+
+Real v1.6 API (locked in `src/ocrbench/paddle_adapter.py`):
+
+- `predict(...)` returns an iterable of page result objects
+  (`PaddleOCRVLResult`).
+- Canonical text source is `page.json["res"]["parsing_res_list"]`
+  (`block_label` / `block_content` / `block_bbox`), because it preserves
+  block structure. `page.markdown` (also a dict) is fallback only.
+- Observed labels: `paragraph_title`, `text`, `table`, `image`.
+- Table `block_content` is HTML (e.g.
+  `<table><tr><td>المبلغ</td><td>24,371.25 SAR</td></tr>…</table>`,
+  parsed deterministically into list-of-row grids; `colspan=N` expands to
+  N cells — first holds the text, the rest `""` — with no content
+  duplication; `rowspan` is noted, not vertically expanded).
+- Empty `image` blocks are ignored for recognition text (non-empty image
+  content is kept as visual description only, never as text).
+- `fields` stays `{}` for v1.6 outputs: Paddle emits recognition +
+  structure, never semantic canonical fields. A row
+  `المبلغ | 24,371.25 SAR` never becomes `fields["amount"]` on its own;
+  recognition and table structure remain separate from downstream
+  canonical semantic field extraction.
+
+Measured via `scripts/score_ocr_results.py` (Layer A recognition and
+Layer B structuring reported separately — never merged):
+
+Tesseract (kaggle-CPU, `tesseract 4.1.1`, `eng` fallback —
+`ara traineddata` missing):
+
+- DEV-004: identifier text accuracy = 1.0, numeric text exact = 1.0,
+  anchor recall = 0.4, structured fields = 0, latency ~603 ms
+  (602.65 ms measured).
+- DEV-010: numeric text exact = 1.0, anchor recall = 1.0, table label
+  text recall = 1.0, table association = 0, latency ~856 ms
+  (855.57 ms measured).
+
+PaddleOCR-VL-1.6 (kaggle-GPU T4):
+
+- DEV-004: identifier text accuracy = 1.0, numeric text exact = 1.0,
+  anchor recall = 1.0, structured semantic fields = 0,
+  latency = 8621.42 ms.
+- DEV-010: numeric text exact = 1.0, anchor recall = 1.0, table label
+  text recall = 1.0, table association accuracy = 1.0, structured
+  semantic fields = 0, latency = 11274.39 ms.
+
+Interpretation (do not collapse recognition, structure, and semantic
+extraction into one score):
+
+- Tesseract remains the fast raw-OCR baseline.
+- Paddle materially improves Arabic coverage (DEV-004 anchor recall
+  0.4 → 1.0) and structured table recovery (DEV-010 association 0 → 1.0).
+- Paddle is roughly an order of magnitude slower on these fixtures
+  (~0.6–0.9 s vs ~8.6–11.3 s).
+- Semantic canonical field extraction is still a separate downstream
+  concern (both engines report `fields = {}` on these runs).
+
+Qwen was NOT run in this round (charts/KPI visual reasoning remain a
+separate pending experiment).
+
+## 11. Provisional Phase 2 routing policy (evidence-based candidate)
+
+Current evidence-based candidate policy — documented here, NOT hardcoded
+as production routing (the architecture still marks routing provisional):
+
+1. Native parser first.
+2. If native extraction is sufficient: stay native.
+3. If scanned/simple text: lightweight OCR candidate may be sufficient.
+4. If Arabic-heavy, layout-heavy, table-heavy, or complex scanned
+   document: PaddleOCR-VL is the preferred current candidate.
+5. Charts/KPI visual reasoning remain a separate pending experiment.

@@ -87,3 +87,37 @@ priority order is fixed:
 For charts/KPI visuals, semantic understanding gains weight — but numeric
 faithfulness still gates acceptance. The simplest model clearing the
 gates wins; thresholds TBD after baselines (EVALUATION_PLAN §12).
+
+---
+
+## Appendix A — First real Phase 2 benchmark (measured reference)
+
+Reference values only — do not edit. Recorded here so future runs compare
+against the same floor. Recognition (Layer A) and structuring (Layer B)
+stay separate; never merge them into one score. Qwen was not run.
+
+Environment: PaddlePaddle 3.2.1, PaddleOCR 3.7.0, CUDA, Tesla T4;
+pipeline `PaddleOCRVL(pipeline_version="v1.6")`. Canonical adapter source:
+`page.json["res"]["parsing_res_list"]`; table HTML → row grids;
+`fields = {}` for v1.6 (no invented semantic fields).
+
+Tesseract (kaggle-CPU, 4.1.1, eng fallback):
+
+- DEV-004: identifier text accuracy = 1.0, numeric text exact = 1.0,
+  anchor recall = 0.4, structured fields = 0, latency ~603 ms.
+- DEV-010: numeric text exact = 1.0, anchor recall = 1.0, table label
+  text recall = 1.0, table association = 0, latency ~856 ms.
+
+PaddleOCR-VL-1.6 (kaggle-GPU T4):
+
+- DEV-004: identifier text accuracy = 1.0, numeric text exact = 1.0,
+  anchor recall = 1.0, structured semantic fields = 0,
+  latency = 8621.42 ms.
+- DEV-010: numeric text exact = 1.0, anchor recall = 1.0, table label
+  text recall = 1.0, table association accuracy = 1.0, structured
+  semantic fields = 0, latency = 11274.39 ms.
+
+Interpretation: Tesseract remains the fast raw-OCR baseline; Paddle
+materially improves Arabic coverage and structured table recovery at
+roughly an order of magnitude higher latency; semantic canonical field
+extraction is still a separate downstream concern.

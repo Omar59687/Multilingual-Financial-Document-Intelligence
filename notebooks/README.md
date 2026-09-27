@@ -31,10 +31,18 @@ coupling ever enter this repository.
 5. For the Paddle experiment: switch to (or create) a **GPU T4** session
    with the same files attached.
 6. Run the environment cell (section 0) and confirm the GPU report.
-7. Run the Setup cell: it reports the CUDA environment first, then runs
-   `%pip install -q paddleocr`. If `import paddle` is CPU-only on the GPU
-   session, install the CUDA-matched `paddlepaddle-gpu` wheel per the
-   official install table (linked in the cell) — never guess a wheel.
+7. Run the Setup cell: it reports the CUDA environment first, then installs
+   in SEPARATE steps — first the PaddlePaddle GPU build (>=3.2.1,
+   CUDA-matched per the official install table linked in the cell —
+   never guess a wheel), then `paddleocr[doc-parser]` (the doc-parser
+   extra is required for the v1.6 `PaddleOCRVL` pipeline). Keep package
+   installation and `import` cells separate: install → (kernel restart
+   may be required after installation; if `import paddleocr` fails or
+   reports CPU-only right after install, restart the kernel and re-run
+   the import cell) → import and verify versions. If `import paddle`
+   is CPU-only on the GPU session, install the CUDA-matched
+   `paddlepaddle-gpu` wheel per the official install table (linked in
+   the cell) — never guess a wheel.
 8. Run section 4 (Experiment B): DEV-004 and DEV-010 run by default;
    leave `RUN_PADDLE_OPTIONAL = False` for the first pass (DEV-008/009
    come later). Model init/download time is recorded separately from
@@ -63,3 +71,34 @@ coupling ever enter this repository.
 3. Class C (Qwen-VL) only where B demonstrably fails (DEV-008 trend,
    DEV-009 layout/verdict). Class D (ColQwen) is a Phase-6 retrieval
    concern, not an OCR experiment.
+
+## First real benchmark (measured — reference, do not edit)
+
+Kaggle lab, `PaddleOCRVL(pipeline_version="v1.6")`
+(PaddlePaddle 3.2.1, PaddleOCR 3.7.0, Tesla T4). Canonical adapter source:
+`page.json["res"]["parsing_res_list"]`; table HTML → row grids;
+`fields = {}` (no invented semantic fields). Qwen not run.
+
+- Tesseract DEV-004: identifier text 1.0, numeric text exact 1.0, anchor
+  recall 0.4, structured fields 0, latency ~603 ms.
+- Tesseract DEV-010: numeric text exact 1.0, anchor recall 1.0, table
+  label text recall 1.0, table association 0, latency ~856 ms.
+- PaddleOCR-VL-1.6 DEV-004: identifier text 1.0, numeric text exact 1.0,
+  anchor recall 1.0, structured semantic fields 0, latency 8621.42 ms.
+- PaddleOCR-VL-1.6 DEV-010: numeric text exact 1.0, anchor recall 1.0,
+  table label text recall 1.0, table association 1.0, structured semantic
+  fields 0, latency 11274.39 ms.
+
+Interpretation: Tesseract stays the fast raw-OCR baseline; Paddle
+materially improves Arabic coverage and structured table recovery at
+roughly an order of magnitude higher latency; semantic field extraction
+is a separate downstream concern. Full detail:
+`docs/OCR_VISION_DESIGN.md` §10–§11.
+
+## Provisional routing (evidence-based candidate, not hardcoded)
+
+1. Native parser first; stay native when sufficient.
+2. Scanned/simple text: lightweight OCR may suffice.
+3. Arabic-heavy, layout-heavy, table-heavy, or complex scanned:
+   PaddleOCR-VL is the preferred current candidate.
+4. Charts/KPI visual reasoning remain a separate pending experiment.
