@@ -47,6 +47,23 @@ Layer B — structuring ("did the model attach it correctly?"):
 - Chart/KPI semantic (B):
 - Schema violations:
 
+Visual round (DEV-008 chart / DEV-009 KPI — each independent, never one
+score; faithfulness first, latency separate):
+
+- chart_label_recall (title/years/series):
+- chart_numeric_exact_accuracy (displayed "M" labels):
+- chart_association_accuracy (year -> displayed value):
+- chart_trend_semantic_accuracy (peak/lowest/keywords):
+- kpi_label_recall (cards/bars/panel):
+- kpi_numeric_exact_accuracy (displayed values):
+- kpi_association_accuracy (label -> displayed value):
+- budget_status_accuracy (visibly stated verdict ONLY):
+- arabic_required_anchor_recall / english_required_anchor_recall:
+- hallucinated_numeric_count / hallucinated_label_count:
+- unsupported_claim_count (causal wording flagged for review):
+- latency_ms (per document, init/download reported separately):
+- Qwen model used (8B primary or 4B fallback + recorded blocker):
+
 Fair-comparison rule: traditional OCR is judged FIRST on Layer A;
 layout/document-understanding models on BOTH layers; VLMs may add
 semantic interpretation. No structured credit for prose-only mentions.

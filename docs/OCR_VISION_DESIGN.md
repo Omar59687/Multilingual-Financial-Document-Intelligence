@@ -314,3 +314,80 @@ as production routing (the architecture still marks routing provisional):
 4. If Arabic-heavy, layout-heavy, table-heavy, or complex scanned
    document: PaddleOCR-VL is the preferred current candidate.
 5. Charts/KPI visual reasoning remain a separate pending experiment.
+
+## 12. Visual-reasoning benchmark (locked design — DEV-008 + DEV-009)
+
+Experiment question: does Qwen3-VL add meaningful visual-reasoning
+capability beyond PaddleOCR-VL-1.6 for MizanIQ charts and KPI
+dashboards? Run BOTH candidates on BOTH documents. No winner is
+selected before measurement — this section locks the design only.
+
+Locked decisions:
+
+- Documents: DEV-008 (revenue trend chart 2015–2024, EN) and DEV-009
+  (KPI dashboard Q4 2023, mixed AR/EN). Frozen fixtures and frozen truth
+  are never modified to fit model output.
+- Candidates: PaddleOCR-VL-1.6 (`PaddleOCRVL(pipeline_version="v1.6")`,
+  official defaults — `chart_recognition` NOT overridden for the first
+  visual pass; any future change is recorded in the identity, never
+  hidden; never tuned per fixture) and Qwen3-VL.
+- Qwen priority: `Qwen/Qwen3-VL-8B-Instruct` first;
+  `Qwen/Qwen3-VL-4B-Instruct` ONLY if 8B cannot reasonably run on the
+  Kaggle T4 (CUDA OOM, unsupported combination, memory ceiling). The 8B
+  blocker is recorded in warnings/meta BEFORE any 4B use — never silent.
+  Quantization needs a stop-and-report decision, never a silent change.
+- Primary criterion: faithful numeric/chart/KPI understanding (exact
+  visible numbers, exact labels, correct associations, faithful
+  structure/trend, no hallucinations, no hidden recomputation, AR/EN
+  handling). Secondary: latency. Prose quality is NOT the objective.
+- Both models adapt to the SAME result schema
+  (`model/model_version/device/document_id/latency_ms/text/fields/
+  tables/visual_description/warnings`); raw outputs preserved separately
+  (`paddle_raw_<DEV>.json`, `qwen_raw_<DEV>.json`); no hand correction.
+- Notebook switches `RUN_PADDLE_VISUAL` / `RUN_QWEN_VISUAL` default
+  False so Run All never triggers large downloads; sections Visual A
+  (Paddle 008/009), Visual B (Qwen 008/009), Visual export.
+
+DEV-008 scoring (frozen truth only):
+
+- A. Visible fact recovery: chart title, year labels, visible values,
+  units, legend/series names (`chart_labels`, `chart_display_text` over
+  displayed "M" labels — canonical exact sums are NOT printed on the
+  chart and are never demanded as text).
+- B. Structured association: year -> displayed value, exact
+  (`chart_association`); prose co-occurrence earns zero structured
+  credit.
+- C. Trend semantics: increasing/decreasing direction, highest/lowest
+  displayed year, visible shifts (`chart_trend`); invented causes earn
+  nothing and causal wording is flagged for review, never rewarded.
+- D. Hallucination: invented years/values/series and unsupported claims
+  counted independently (`chart_hallucinations`, `chart_claims`).
+
+DEV-009 scoring (frozen truth + verified visible labels
+`truth.DEV009_VERIFIED_LABELS`):
+
+- A/B. KPI text/value recovery and label -> value association
+  (`kpi_labels`, `kpi_display_text`, `kpi_association`) over displayed
+  card/bar/panel strings.
+- C. Budget panel canonicals: revenue 23,902,434.34, budget
+  23,849,529.72, variance +52,904.62 (the panel prints the exact
+  variance figure).
+- D. Budget status: accuracy counts ONLY the visibly stated verdict
+  ("Budget met" iff revenue actual >= budget; expense targets use actual
+  <= budget). Recomputing an unquoted status earns no credit; refusing
+  to infer beyond the visual is never penalized (`budget_status`).
+- E. Mixed language: Arabic vs English required anchors scored
+  separately (`anchors_arabic`, `anchors_english`).
+- F. Hallucination: invented labels/values/conclusions counted
+  independently (`kpi_hallucinations`).
+
+Metric rule: every visual metric is independent
+(`chart_label_recall`, `chart_numeric_exact_accuracy`,
+`chart_association_accuracy`, `chart_trend_semantic_accuracy`,
+`kpi_label_recall`, `kpi_numeric_exact_accuracy`,
+`kpi_association_accuracy`, `budget_status_accuracy`,
+`arabic/english_required_anchor_recall`, hallucination/claim counts,
+`latency_ms`). No combined overall score, no averaging of correctness
+with latency. Implementation: `src/ocrbench/metrics.py` (visual
+section), `src/ocrbench/qwen_adapter.py` (8B/4B identity + fallback),
+wired additively in `scripts/score_ocr_results.py`.

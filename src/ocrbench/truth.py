@@ -74,6 +74,31 @@ DEV010_SECTIONS = [
     ("Equity", [], "equity"),
 ]
 
+# DEV-009 rendered dashboard labels, VERIFIED against the frozen generator
+# (src/document_generation/documents.py build_dev009: 4 KPI cards, 3 branch
+# bars, budget-vs-actual panel) and DEV_DOCUMENT_SPEC §DEV-009 resolved
+# KPIs. (visible label, GT numeric field key) in visual order. The budget
+# verdict line is a visible status statement, not a numeric row, so its
+# field key is None and it is scored via the visible-quote rule
+# (metrics.score_budget_status), never via recomputation.
+DEV009_VERIFIED_LABELS = [
+    ("Revenue", "revenue"),
+    ("Gross profit", "gross_profit"),
+    ("Operating expenses", "operating_expenses"),
+    ("Net income", "net_income"),
+    ("Riyadh", "branch_revenue_BR-RUH"),
+    ("Jeddah", "branch_revenue_BR-JED"),
+    ("Dammam", "branch_revenue_BR-DMM"),
+    ("Budget", "budget_total"),
+    ("Actual", "revenue"),
+    ("Variance", "variance"),
+]
+
+# Visible budget-status statement for DEV-009 (variance +52,904.62 >= 0,
+# revenue-type target -> met). Quoted verbatim on the panel alongside the
+# exact variance figure.
+DEV009_STATUS_TEXT = "Budget met"
+
 
 def load_gt(gt_path) -> dict:
     """Read one frozen ground-truth JSON (explicit path, no scanning)."""

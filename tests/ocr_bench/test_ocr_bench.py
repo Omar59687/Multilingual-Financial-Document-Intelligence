@@ -254,7 +254,10 @@ def test_no_benchmark_truth_import_in_production():
 
 def test_notebook_is_minimal_and_valid():
     nb_path = ROOT / "notebooks" / "ocr_vision_benchmark.ipynb"
-    assert nb_path.stat().st_size < 30 * 1024, "notebook must stay minimal"
+    # Minimality cap raised 30 -> 40 KB for the visual round (runnable
+    # Paddle-visual + Qwen inference sections added by design); the guard
+    # still bans outputs, weights, and secrets (checked below).
+    assert nb_path.stat().st_size < 40 * 1024, "notebook must stay minimal"
     nb = json.loads(nb_path.read_text(encoding="utf-8"))
     assert nb["nbformat"] == 4
     sources = "\n".join("".join(c.get("source", []))
@@ -528,7 +531,8 @@ def test_notebook_paddle_runnable_no_placeholder():
 
 def test_notebook_still_valid_and_minimal():
     nb_path = ROOT / "notebooks" / "ocr_vision_benchmark.ipynb"
-    assert nb_path.stat().st_size < 30 * 1024
+    # Same 40 KB cap as test_notebook_is_minimal_and_valid (visual round).
+    assert nb_path.stat().st_size < 40 * 1024
     nb = json.loads(nb_path.read_text(encoding="utf-8"))
     assert nb["nbformat"] == 4
     assert all(not c.get("outputs") for c in nb["cells"]

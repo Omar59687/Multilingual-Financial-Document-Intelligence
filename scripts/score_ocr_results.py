@@ -26,6 +26,16 @@ Two independent layers (never merged or averaged):
     Requires populated fields/tables; a correct number in prose alone
     earns ZERO structured credit.
 
+VISUAL REASONING (DEV-008 chart / DEV-009 KPI, additive and independent):
+    chart_labels (chart_label_recall), chart_display_text
+    (chart_numeric_exact_accuracy over displayed "M" labels),
+    chart_association (year -> displayed value), chart_trend (peak /
+    lowest / keyword recall + causal flag), chart_hallucinations,
+    chart_claims, kpi_labels, kpi_display_text, kpi_association,
+    budget_status (visible-quote accuracy), kpi_hallucinations,
+    anchors_arabic / anchors_english. Each reported independently;
+    latency stays a separate number. Faithfulness first.
+
 Legacy aliases identifiers (= structured) and numerics_exact (=
 structured exact) are preserved so historical values never disappear.
 CER/WER vs anchor concatenations are diagnostics only — not full-document
@@ -88,6 +98,10 @@ def score_result(result: dict, all_truth: dict) -> dict:
     }
     scored["anchors"] = metrics.score_anchors(
         text, doc_truth.get("text_anchors") or [])
+    split = metrics.split_anchors_by_script(doc_truth.get("text_anchors")
+                                            or [])
+    scored["anchors_arabic"] = metrics.score_anchors(text, split["arabic"])
+    scored["anchors_english"] = metrics.score_anchors(text, split["english"])
     anchor_ref = " ".join(doc_truth.get("text_anchors") or [])
     scored["cer_vs_anchors_diagnostic"] = metrics.cer(anchor_ref, text)
     scored["wer_vs_anchors_diagnostic"] = metrics.wer(anchor_ref, text)
@@ -113,11 +127,108 @@ def score_result(result: dict, all_truth: dict) -> dict:
     if "chart" in tasks and doc_truth.get("chart"):
         scored["chart"] = metrics.score_chart_understanding(
             fields, visual, doc_truth["chart"])
+        chart = doc_truth["chart"]
+        years = list(chart.get("x", []) or [])
+        series = (chart.get("series") or [{}])[0]
+        disp = metrics.expected_chart_display_values(chart)
+        scored["chart_labels"] = metrics.score_chart_labels(
+            text, metrics.expected_chart_labels(
+                chart, doc_truth.get("text_anchors") or []))
+        scored["chart_display_text"] = metrics.score_chart_display_text(
+            text, disp)
+        exp_pairs = list(zip(years, disp))
+        pred_pairs = metrics.pairs_from_fields_map(
+            fields.get("year_values")
+            if isinstance(fields.get("year_values"), dict) else None)
+        pred_pairs += metrics.pairs_from_display_grid(
+            result.get("tables") or [], years)
+        seen_labels, dedup = set(), []
+        for label, value in pred_pairs:
+            key = metrics.normalize_text(label)
+            if key not in seen_labels:
+                seen_labels.add(key)
+                dedup.append((label, value))
+        scored["chart_association"] = metrics.score_display_association(
+            dedup, exp_pairs)
+        scored["chart_trend"] = metrics.score_trend_semantics(
+            visual, fields, chart)
+        trend_words = [w.strip(".,;:").lower()
+                       for w in chart.get("trend", "").split()]
+        scored["chart_claims"] = metrics.flag_unsupported_claims(
+            visual, trend_words + years + [series.get("label", "")])
+        expected_nums = (list(years) + list(disp)
+                         + [str(v) for v in series.get("values", [])])
+        pred_struct_labels = list(
+            (fields.get("year_values") or {}).keys()) \
+            if isinstance(fields.get("year_values"), dict) else []
+        for table in result.get("tables") or []:
+            for row in table or []:
+                if row:
+                    pred_struct_labels.append(str(row[0]))
+        scored["chart_hallucinations"] = {
+            "numerics": metrics.count_hallucinated_numerics(
+                f"{text}\n{visual}", expected_nums),
+            "labels": metrics.count_hallucinated_labels(
+                pred_struct_labels, years),
+        }
     if "kpi" in tasks:
         scored["kpi"] = metrics.score_kpi_understanding(
             fields, visual,
             {"numeric_values": doc_truth.get("numeric_values") or {},
              "budget_verdict": doc_truth.get("budget_verdict") or {}})
+        if doc_id == "DEV-009":
+            vlabels = [label for label, _ in truth.DEV009_VERIFIED_LABELS]
+        else:
+            vlabels = list(doc_truth.get("text_anchors") or [])
+        scored["kpi_labels"] = metrics.score_kpi_labels(text, vlabels)
+        numerics = truth.scorable_numerics(doc_truth)
+        disp_map, disp_list = {}, []
+        for key, raw in numerics.items():
+            if key == "variance":
+                try:
+                    dec = metrics.normalize_amount(raw)
+                    disp_map[key] = f"+{dec:,.2f}"
+                    disp_list.append(disp_map[key])
+                except ValueError:
+                    continue
+            else:
+                try:
+                    disp_map[key] = metrics.display_millions(raw, 2)
+                    disp_list.append(disp_map[key])
+                except ValueError:
+                    continue
+        disp_list = list(dict.fromkeys(disp_list + ["2023"]))
+        scored["kpi_display_text"] = metrics.score_kpi_display_text(
+            text, disp_list)
+        if doc_id == "DEV-009":
+            exp_kpi = [(label, disp_map[field])
+                       for label, field in truth.DEV009_VERIFIED_LABELS
+                       if field in disp_map]
+        else:
+            exp_kpi = []
+        pred_kpi = metrics.pairs_from_fields_map(fields)
+        table_labels = [label for label, _ in exp_kpi] or vlabels
+        pred_kpi += metrics.pairs_from_display_grid(
+            result.get("tables") or [], table_labels)
+        seen_labels, dedup = set(), []
+        for label, value in pred_kpi:
+            key = metrics.normalize_text(label)
+            if key not in seen_labels:
+                seen_labels.add(key)
+                dedup.append((label, value))
+        scored["kpi_association"] = metrics.score_display_association(
+            dedup, exp_kpi)
+        scored["budget_status"] = metrics.score_budget_status(
+            text, visual, numerics.get("revenue"),
+            numerics.get("budget_total"), kind="revenue")
+        pred_kpi_labels = [label for label, _ in dedup]
+        scored["kpi_hallucinations"] = {
+            "numerics": metrics.count_hallucinated_numerics(
+                f"{text}\n{visual}",
+                disp_list + [str(v) for v in numerics.values()]),
+            "labels": metrics.count_hallucinated_labels(
+                pred_kpi_labels, vlabels),
+        }
     return scored
 
 
@@ -141,6 +252,22 @@ def summarize(scored_results: list) -> dict:
         vals = [s["anchors"]["recall"] for s in scored_results
                 if isinstance(s.get("anchors"), dict)]
         return (sum(vals) / len(vals)) if vals else None
+
+    def recall_key_mean(section, key):
+        vals = [s[section][key] for s in scored_results
+                if isinstance(s.get(section), dict)
+                and key in s[section]]
+        return (sum(vals) / len(vals)) if vals else None
+
+    def count_sum(section, sub, key):
+        total = 0
+        found = False
+        for s in scored_results:
+            v = ((s.get(section) or {}).get(sub) or {}).get(key)
+            if isinstance(v, (int, float)):
+                total += v
+                found = True
+        return total if found else None
 
     def label_text_mean():
         vals = [s["table_label_text"]["label_text_recall"]
@@ -172,6 +299,47 @@ def summarize(scored_results: list) -> dict:
         "mean_numeric_structured_exact_accuracy":
             mean("numerics_structured_exact"),
         "mean_table_association_accuracy_explicit": mean_assoc,
+        # --- visual reasoning (each independent; never combined) ---
+        "mean_chart_label_recall":
+            recall_key_mean("chart_labels", "chart_label_recall"),
+        "mean_chart_numeric_exact_accuracy":
+            recall_key_mean("chart_display_text",
+                            "chart_numeric_exact_accuracy"),
+        "mean_chart_association_accuracy":
+            recall_key_mean("chart_association", "association_accuracy"),
+        "mean_chart_trend_semantic_accuracy":
+            recall_key_mean("chart_trend", "chart_trend_semantic_accuracy"),
+        "mean_kpi_label_recall":
+            recall_key_mean("kpi_labels", "kpi_label_recall"),
+        "mean_kpi_numeric_exact_accuracy":
+            recall_key_mean("kpi_display_text",
+                            "kpi_numeric_exact_accuracy"),
+        "mean_kpi_association_accuracy":
+            recall_key_mean("kpi_association", "association_accuracy"),
+        "mean_budget_status_accuracy":
+            recall_key_mean("budget_status", "budget_status_accuracy"),
+        "mean_arabic_anchor_recall":
+            recall_key_mean("anchors_arabic", "recall"),
+        "mean_english_anchor_recall":
+            recall_key_mean("anchors_english", "recall"),
+        "total_hallucinated_numerics":
+            (count_sum("chart_hallucinations", "numerics",
+                       "hallucinated_numeric_count") or 0)
+            + (count_sum("kpi_hallucinations", "numerics",
+                         "hallucinated_numeric_count") or 0),
+        "total_hallucinated_labels":
+            (count_sum("chart_hallucinations", "labels",
+                       "hallucinated_label_count") or 0)
+            + (count_sum("kpi_hallucinations", "labels",
+                         "hallucinated_label_count") or 0),
+        "total_unsupported_claims": (
+            lambda vals: sum(vals) if vals else None)([
+                s["chart_claims"]["unsupported_claim_count"]
+                for s in scored_results
+                if isinstance(s.get("chart_claims"), dict)
+                and isinstance(
+                    s["chart_claims"].get("unsupported_claim_count"),
+                    (int, float))]),
         "latency_ms": lat,
         "n_schema_violations": sum(len(s.get("schema_errors") or [])
                                    for s in scored_results),

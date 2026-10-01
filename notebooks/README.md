@@ -54,6 +54,32 @@ coupling ever enter this repository.
     data/benchmark/results/<file>.json` and file one report per run
     using `docs/OCR_EXPERIMENT_TEMPLATE.md`.
 
+## Running the visual round (DEV-008 + DEV-009 — exact steps)
+
+1. Use a **GPU T4** session with the same bundle attached; confirm the
+   GPU report (section 0). Both visual switches default False so Run All
+   never triggers large downloads: `RUN_PADDLE_VISUAL = False`,
+   `RUN_QWEN_VISUAL = False`.
+2. Visual A (Paddle): set `RUN_PADDLE_VISUAL = True` and run section 4.
+   Same v1.6 pipeline/adapter, official defaults (`chart_recognition`
+   NOT overridden for the first pass). Per-document raw preserved as
+   `paddle_raw_<DEV>.json`; init/download time stays separate.
+3. Visual B (Qwen): `%pip install -q transformers pillow accelerate`
+   (separate install/import cells; kernel restart may be required after
+   install), then set `RUN_QWEN_VISUAL = True` and run section 5.
+   Primary `Qwen/Qwen3-VL-8B-Instruct`; fallback
+   `Qwen/Qwen3-VL-4B-Instruct` ONLY if 8B cannot run on the T4 — the 8B
+   failure is recorded in warnings/meta BEFORE any 4B use, never
+   silently. No quantization without a stop-and-report decision.
+4. Run section 6 (Visual export): results plus `qwen_raw_<DEV>.json`
+   raws and `experiment_meta.json` (paddle/qwen identities, init
+   latencies, fallback note) append to the same files.
+5. Download all three (`kaggle_results.json`, `experiment_meta.json`,
+   `*_raw_*.json`) to local `data/benchmark/results/`, score with
+   `python scripts/score_ocr_results.py <file>.json`, and file one
+   report per (model × run) via `docs/OCR_EXPERIMENT_TEMPLATE.md`
+   (visual metrics section). No winner is declared from a single run.
+
 ## Rules
 
 - One variable per experiment (EVALUATION_PLAN §13): same inputs, same
