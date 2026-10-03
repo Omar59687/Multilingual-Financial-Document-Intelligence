@@ -17,7 +17,7 @@ This module is evaluation-side analytics ONLY. It does not alter visual
 benchmark scores, result schemas, or scorer semantics.
 """
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 # Static alias table: normalized visible label -> canonical key.
 # Normalization applied before lookup: strip surrounding whitespace and
@@ -93,8 +93,15 @@ def normalize_display_value(display_value: str) -> dict:
     if not rounded:
         # A bare figure is only exact-visible when fully specified;
         # anything coarser than 2dp stays display-rounded.
-        rounded = scaled != scaled.quantize(Decimal("0.01"))
-        scaled = scaled.quantize(Decimal("0.01"))
+        # Project rounding policy: ROUND_HALF_UP (matches the canonical
+        # dataset generator, validators, and Phase 3 normalization; see
+        # docs/STRUCTURED_EXTRACTION_DESIGN.md §5). Verified 2026-10-03:
+        # all 52 display tokens in saved Phase 2 benchmark results are
+        # exact-2dp or integer-scaled, so this explicit mode changes no
+        # saved output (previously implicit HALF_EVEN).
+        rounded = scaled != scaled.quantize(Decimal("0.01"),
+                                            rounding=ROUND_HALF_UP)
+        scaled = scaled.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return {
         "normalized_value": scaled,
         "precision": "display-rounded" if rounded else "exact-visible",
