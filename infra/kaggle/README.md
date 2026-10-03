@@ -55,13 +55,33 @@ python scripts/kaggle_submit_visual.py --model qwen3-vl-8b --docs DEV-008 DEV-00
 into the generated notebook with `ALLOW_QWEN_FALLBACK = False`. An 8B
 failure is recorded as a blocker result; no automatic 4B rerun happens.
 
-## Attached dataset
+## Attached dataset + input/output separation
 
 `kernel-metadata.json` attaches the dataset by slug
-(`dataset_sources`), and the generated notebook resolves the workspace
-robustly by searching for `manifest.json` under `/kaggle/input` (no
-fragile hardcoded nested paths). Ground truth stays evaluation-side;
-only image bytes are inferred on.
+(`dataset_sources`), and the generated notebook resolves
+`BENCHMARK_WORKSPACE` robustly by searching for `manifest.json` under
+`/kaggle/input` (no fragile hardcoded nested paths). Ground truth stays
+evaluation-side; only image bytes are inferred on.
+
+Learned from the first real-run failure (`Errno 30 Read-only file
+system`): Kaggle input datasets are read-only, so the runner NEVER
+changes directory into the dataset. Reads use `BENCHMARK_WORKSPACE`
+(under `/kaggle/input`); EVERY write uses `OUTPUT_DIR =
+Path("/kaggle/working")` (`qwen_raw_*`, results, meta, aliases).
+A write failure after successful generation is labeled
+`OUTPUT_WRITE_FAILED`, distinct from `MODEL_INFERENCE_FAILED`, with the
+original exception text preserved.
+
+## Qwen-only execution
+
+Automated runs execute Qwen DEV-008/009 only: the generated notebook
+replaces the Tesseract, Paddle-install, Paddle-import, and Paddle
+experiment cells with skip stubs (`RUN_TESSERACT = False`,
+`RUN_PADDLE = False`, `RUN_PADDLE_VISUAL = False`,
+`RUN_QWEN_VISUAL = True`). No PaddlePaddle install and no PaddleOCR
+initialization happen on the Qwen path, avoiding wasted runtime and
+dependency conflicts. The committed source notebook is untouched and
+keeps manual defaults.
 
 ## GPU behavior
 

@@ -21,6 +21,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,12 +47,17 @@ SOURCE_NOTEBOOK = Path("notebooks/ocr_vision_benchmark.ipynb")
 RESULTS_ROOT = Path("data/benchmark/results")
 SCORER_SCRIPT = Path("scripts/score_ocr_results.py")
 
-# Kernel outputs -> deterministic local names (existing notebook writes
-# kaggle_results.json / experiment_meta.json; raw files pass through).
+# Kernel outputs -> deterministic local names. The fixed execution
+# notebook writes model-specific qwen_visual_* files (plus kaggle_* /
+# experiment_meta.json aliases); the downloader prefers the
+# model-specific names and falls back to the aliases.
+PRIMARY_RESULTS = "qwen_visual_results.json"
+PRIMARY_META = "qwen_visual_meta.json"
 DOWNLOAD_RENAMES = {
-    "kaggle_results.json": "qwen_visual_results.json",
-    "experiment_meta.json": "qwen_visual_meta.json",
+    "kaggle_results.json": PRIMARY_RESULTS,
+    "experiment_meta.json": PRIMARY_META,
 }
+RESULT_FILENAME_CANDIDATES = (PRIMARY_RESULTS, "kaggle_results.json")
 RAW_PREFIXES = ("qwen_raw_", "paddle_raw_")
 
 AUTOMATION_CELL_MARKER = "MIZANIQ-KAGGLE-AUTOMATION"
@@ -280,28 +286,58 @@ def resolve_username(explicit=None, env=None, kaggle_dir=None,
 
 
 # --------------------------------------------------------------------------
-# Execution notebook generation (strategy A)
+# Execution notebook generation (strategy A: dedicated Qwen-only notebook)
 # --------------------------------------------------------------------------
+#
+# Root cause of the first real-run failure: the bootstrap did
+# ``os.chdir(dataset_workspace)`` and every write used a bare relative
+# filename, so artifacts landed on Kaggle's READ-ONLY /kaggle/input
+# (``OSError: [Errno 30] Read-only file system`` for qwen_raw_* and
+# kaggle_results.json) even though Qwen generation itself had succeeded.
+#
+# Fixed contract: BENCHMARK_WORKSPACE (read-only, under /kaggle/input)
+# for manifest/truth/images; OUTPUT_DIR (/kaggle/working) for EVERY
+# write. No chdir anywhere. Tesseract + Paddle cells are replaced with
+# skip stubs so a Qwen-only run never installs/initializes Paddle.
+
+KAGGLE_INPUT_ROOT = "/kaggle/input"
+KAGGLE_OUTPUT_DIR = "/kaggle/working"
 
 _AUTOMATION_CELL_SOURCE = [
-    f"# {AUTOMATION_CELL_MARKER} (generated): resolve benchmark workspace\n",
-    "import os as _m_os\n",
+    f"# {AUTOMATION_CELL_MARKER} (generated): Qwen-only visual run\n",
+    "# READ benchmark files from the attached dataset (read-only).\n",
+    "# WRITE every generated artifact to /kaggle/working. Never\n",
+    "# change the working directory into the dataset.\n",
     "from pathlib import Path as _m_Path\n",
-    "def _mizaniq_find_workspace():\n",
-    "    for _base in (_m_Path('/kaggle/input'), _m_Path('.')):\n",
-    "        if not _base.exists():\n",
-    "            continue\n",
-    "        for _p in sorted(_base.rglob('manifest.json')):\n",
-    "            return _p.parent\n",
-    "    return None\n",
-    "_MIZANIQ_WS = _mizaniq_find_workspace()\n",
-    "if _MIZANIQ_WS is not None:\n",
-    "    _m_OS_CWD = _m_os.getcwd()\n",
-    "    _m_os.chdir(_MIZANIQ_WS)\n",
-    "    print(f'mizaniq workspace: {_MIZANIQ_WS} (was {_m_OS_CWD})')\n",
-    "else:\n",
-    "    print('mizaniq workspace: manifest.json not found under /kaggle/input')\n",
+    "BENCHMARK_WORKSPACE = None\n",
+    "for _m_base in (_m_Path('/kaggle/input'), _m_Path('.')):\n",
+    "    if not _m_base.exists():\n",
+    "        continue\n",
+    "    for _m_p in sorted(_m_base.rglob('manifest.json')):\n",
+    "        BENCHMARK_WORKSPACE = _m_p.parent\n",
+    "        break\n",
+    "    if BENCHMARK_WORKSPACE is not None:\n",
+    "        break\n",
+    "print(f'mizaniq benchmark workspace (read-only): {BENCHMARK_WORKSPACE}')\n",
+    "OUTPUT_DIR = _m_Path('/kaggle/working')\n",
+    "OUTPUT_DIR.mkdir(parents=True, exist_ok=True)\n",
+    "print(f'mizaniq output dir: {OUTPUT_DIR}')\n",
+    "# Qwen-only execution controls (the committed notebook has no\n",
+    "# RUN_TESSERACT/RUN_PADDLE switches; Tesseract+Paddle cells are\n",
+    "# replaced with skip stubs below for automated runs).\n",
+    "RUN_TESSERACT = False\n",
+    "RUN_PADDLE = False\n",
+    "RUN_PADDLE_VISUAL = False\n",
+    "RUN_QWEN_VISUAL = True\n",
 ]
+
+
+def _stub_cell_source(reason: str) -> list:
+    """Replacement source for a cell skipped in Qwen-only runs."""
+    return [
+        f"# {AUTOMATION_CELL_MARKER}: {reason}\n",
+        f"print('{AUTOMATION_CELL_MARKER}: skipped ({reason})')\n",
+    ]
 
 
 def _flip_qwen_switches(source_text: str, model_id: str, docs: list) -> str:
@@ -324,31 +360,136 @@ def _flip_qwen_switches(source_text: str, model_id: str, docs: list) -> str:
     return out
 
 
+def _qwen_only_cell_transform(source_text: str) -> str:
+    """Point every Qwen write at OUTPUT_DIR + classify write failures.
+
+    Write failures after successful generation are labeled
+    OUTPUT_WRITE_FAILED so they are never misread as model inference
+    errors (MODEL_INFERENCE_FAILED); the original exception text is
+    preserved in both cases.
+    """
+    out = source_text.replace(
+        "rp = f'qwen_raw_{doc_id}.json'",
+        "rp = str(OUTPUT_DIR / f'qwen_raw_{doc_id}.json')",
+    )
+    out = out.replace(
+        "                with open(rp, 'w', encoding='utf-8') as f:\n"
+        "                    json.dump({'generated_text': gen}, f,"
+        " ensure_ascii=False)\n",
+        "                try:\n"
+        "                    with open(rp, 'w', encoding='utf-8') as f:\n"
+        "                        json.dump({'generated_text': gen}, f,"
+        " ensure_ascii=False)\n"
+        "                except OSError as _wexc:\n"
+        "                    r['warnings'].append(\n"
+        "                        f'OUTPUT_WRITE_FAILED: {_wexc}')\n"
+        "                    raise\n",
+    )
+    out = out.replace(
+        "            except Exception as e:\n"
+        "                r['warnings'].append(f'inference failed: "
+        "{type(e).__name__}: {e}')",
+        "            except Exception as e:\n"
+        "                _w = [w for w in r['warnings']\n"
+        "                      if 'OUTPUT_WRITE_FAILED' in w]\n"
+        "                _kind = ('OUTPUT_WRITE_FAILED' if _w\n"
+        "                         else 'MODEL_INFERENCE_FAILED')\n"
+        "                r['warnings'].append(\n"
+        "                    f'{_kind}: {type(e).__name__}: {e}')",
+    )
+    return out
+
+
+def _export_cell_transform(source_text: str) -> str:
+    """Point export writes at OUTPUT_DIR + keep model-specific aliases."""
+    out = source_text.replace(
+        "with open('kaggle_results.json', 'w', encoding='utf-8') as f:",
+        "with open(OUTPUT_DIR / 'kaggle_results.json', 'w',"
+        " encoding='utf-8') as f:",
+    )
+    out = out.replace(
+        "with open('experiment_meta.json', 'w', encoding='utf-8') as f:",
+        "with open(OUTPUT_DIR / 'experiment_meta.json', 'w',"
+        " encoding='utf-8') as f:",
+    )
+    out += (
+        "\n(OUTPUT_DIR / 'qwen_visual_results.json').write_bytes(\n"
+        "    (OUTPUT_DIR / 'kaggle_results.json').read_bytes())\n"
+        "(OUTPUT_DIR / 'qwen_visual_meta.json').write_bytes(\n"
+        "    (OUTPUT_DIR / 'experiment_meta.json').read_bytes())\n"
+        "print('saved qwen_visual_results.json + qwen_visual_meta.json '\n"
+        "      '(aliases: kaggle_results.json + experiment_meta.json)')\n"
+    )
+    return out
+
+
+def _set_cell_source(cell, source_text: str) -> None:
+    lines = source_text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    cell["source"] = lines
+
+
 def build_execution_notebook(src_path, dest_path, model_id: str,
                              docs: list) -> dict:
-    """Generate the Kaggle execution notebook from the source notebook.
+    """Generate the Qwen-only Kaggle execution notebook.
 
-    Returns ``{"switches": {...}}`` describing what changed. The committed
-    source notebook is never modified and keeps expensive execution OFF.
+    Transformations (committed source untouched, manual defaults kept):
+    - prepend bootstrap defining BENCHMARK_WORKSPACE (/kaggle/input
+      discovery) and OUTPUT_DIR (/kaggle/working); no chdir;
+    - ``WORKSPACE = Path('.')`` -> ``WORKSPACE = BENCHMARK_WORKSPACE``;
+    - Paddle install/imports, Tesseract, and Paddle experiment cells ->
+      skip stubs (Qwen-only: no Paddle install, no Paddle init);
+    - Qwen config cell -> explicit model/docs, fallback OFF;
+    - Qwen + export writes -> OUTPUT_DIR, with OUTPUT_WRITE_FAILED vs
+      MODEL_INFERENCE_FAILED classification and qwen_visual_* aliases.
+
+    Returns ``{"switches": {...}}`` describing what changed.
     """
     src = Path(src_path)
     nb = json.loads(src.read_text(encoding="utf-8"))
-    flipped = False
+    seen = {"workspace": False, "qwen": False, "export": False}
+    stubs = {"tesseract": False, "paddle_install": False,
+             "paddle_imports": False, "paddle_experiment": False}
     for cell in nb.get("cells", []):
+        if cell.get("cell_type") != "code":
+            continue
         joined = "".join(cell.get("source", []))
         if "RUN_QWEN_VISUAL" in joined and "QWEN_MODEL_ID" in joined:
-            cell["source"] = _flip_qwen_switches(joined, model_id,
-                                                 list(docs)).splitlines(
-                keepends=True)
-            # Ensure trailing newline on last line for nbformat hygiene.
-            if cell["source"] and not cell["source"][-1].endswith("\n"):
-                cell["source"][-1] += "\n"
-            flipped = True
-    if not flipped:
+            transformed = _qwen_only_cell_transform(
+                _flip_qwen_switches(joined, model_id, list(docs)))
+            _set_cell_source(cell, transformed)
+            seen["qwen"] = True
+        elif "kaggle_results.json" in joined and "experiment_meta.json" \
+                in joined and "open(" in joined:
+            _set_cell_source(cell, _export_cell_transform(joined))
+            seen["export"] = True
+        elif "WORKSPACE = Path('.')" in joined:
+            _set_cell_source(
+                cell,
+                joined.replace("WORKSPACE = Path('.')",
+                               "WORKSPACE = BENCHMARK_WORKSPACE"))
+            seen["workspace"] = True
+        elif "TESS_DOCS" in joined:
+            cell["source"] = _stub_cell_source(
+                "Tesseract skipped (Qwen-only automated run)")
+            stubs["tesseract"] = True
+        elif "%pip install" in joined and "paddlepaddle-gpu" in joined:
+            cell["source"] = _stub_cell_source(
+                "Paddle install skipped (Qwen-only automated run)")
+            stubs["paddle_install"] = True
+        elif "STEP 2/2: imports" in joined:
+            cell["source"] = _stub_cell_source(
+                "Paddle imports skipped (Qwen-only automated run)")
+            stubs["paddle_imports"] = True
+        elif "PADDLE_MODEL_ID" in joined:
+            cell["source"] = _stub_cell_source(
+                "Paddle experiment skipped (Qwen-only automated run)")
+            stubs["paddle_experiment"] = True
+    missing = [k for k, v in {**seen, **stubs}.items() if not v]
+    if missing:
         raise ValueError(
-            "source notebook has no Qwen config cell "
-            "(RUN_QWEN_VISUAL/QWEN_MODEL_ID)"
-        )
+            f"source notebook missing expected cells: {missing}")
     nb["cells"].insert(0, {
         "cell_type": "code",
         "execution_count": None,
@@ -362,10 +503,15 @@ def build_execution_notebook(src_path, dest_path, model_id: str,
                     encoding="utf-8")
     return {
         "switches": {
+            "RUN_TESSERACT": False,
+            "RUN_PADDLE": False,
+            "RUN_PADDLE_VISUAL": False,
             "RUN_QWEN_VISUAL": True,
             "QWEN_MODEL_ID": model_id,
             "QWEN_DOCS": list(docs),
             "ALLOW_QWEN_FALLBACK": False,
+            "BENCHMARK_WORKSPACE": KAGGLE_INPUT_ROOT,
+            "OUTPUT_DIR": KAGGLE_OUTPUT_DIR,
             "automation_cell": AUTOMATION_CELL_MARKER,
         }
     }
@@ -529,9 +675,23 @@ def download_paths_stay_in_results(run_dir, filenames,
 
 
 def validate_downloaded_results(run_dir) -> dict:
-    """Check the result contract of a downloaded run directory."""
+    """Check the result contract of a downloaded run directory.
+
+    Accepts the model-specific ``qwen_visual_results.json`` or the
+    legacy ``kaggle_results.json`` alias (scorer integration unchanged).
+    """
     run_dir = Path(run_dir)
-    results_file = run_dir / DOWNLOAD_RENAMES["kaggle_results.json"]
+    results_file = None
+    for candidate in RESULT_FILENAME_CANDIDATES:
+        if (run_dir / candidate).is_file():
+            results_file = run_dir / candidate
+            break
+    if results_file is None:
+        results_file = run_dir / PRIMARY_RESULTS
+        report = {"ok": False, "results_file": str(results_file),
+                  "schema_errors": {}, "files": []}
+        report["error"] = f"missing {PRIMARY_RESULTS} (or alias)"
+        return report
     report = {"ok": False, "results_file": str(results_file),
               "schema_errors": {}, "files": []}
     if not results_file.is_file():
@@ -570,14 +730,19 @@ def validate_downloaded_results(run_dir) -> dict:
 def run_scorer(results_file, out_file=None, runner=None) -> dict:
     """Run ``scripts/score_ocr_results.py`` on a downloaded result file.
 
-    Returns ``{"ok": bool, "stdout": str, "stderr": str,
-    "returncode": int}``. Scoring failure never deletes downloads.
+    The scorer is launched in UTF-8 mode (``-X utf8`` plus ``PYTHONUTF8=1``)
+    so Arabic output cannot crash under Windows cp1252 consoles. Score
+    content is unchanged. Returns ``{"ok": bool, "stdout": str,
+    "stderr": str, "returncode": int}``. Scoring failure never deletes
+    downloads.
     """
-    cmd = ["python", str(SCORER_SCRIPT), str(results_file)]
+    cmd = [sys.executable, "-X", "utf8", str(SCORER_SCRIPT),
+           str(results_file)]
     if out_file is not None:
         cmd += ["--out", str(out_file)]
     run = runner or subprocess.run
-    proc = run(cmd, capture_output=True, text=True)
+    env = dict(os.environ, PYTHONUTF8="1")
+    proc = run(cmd, capture_output=True, text=True, env=env)
     return {
         "ok": proc.returncode == 0,
         "stdout": getattr(proc, "stdout", "") or "",

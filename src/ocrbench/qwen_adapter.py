@@ -4,8 +4,9 @@ Covers the Kaggle-side Qwen contract WITHOUT importing transformers here:
 
 - identity constants: 8B primary, 4B fallback-ONLY (see fallback rule),
 - select_model_id: explicit 8B -> 4B fallback recording (never silent),
-- extract_json_fields: safe parsing of an optional ```json block in
-  generated prose into structured fields ({} when absent/unparseable),
+- extract_json_fields: safe parsing of a ```json block in generated
+  prose — new {"pairs": [{"label","value"}]} contract plus legacy flat
+  maps ({} when absent/truncated/unparseable),
 - build_result / blocker_result: schema-conformant construction.
 
 Fallback rule (locked): Qwen/Qwen3-VL-8B-Instruct runs first. The 4B
@@ -62,37 +63,123 @@ def identity_for(transformers_version=None, device=None,
 
 
 def extract_json_fields(generated_text):
-    """Safely extract an optional ```json {...} block into a dict.
+    """Safely extract structured pairs from generated prose.
 
-    Returns {} when absent or unparseable — never raises, never invents.
+    Accepts two shapes (never raises, never invents):
+    - new ``{"pairs": [{"label": ..., "value": ...}, ...]}`` contract:
+      real labels are DATA (never object keys); order preserved,
+      Unicode preserved, first occurrence wins on duplicate labels;
+    - legacy flat ``{"label": "value", ...}`` maps (backward compatible).
+    Returns {} when absent, truncated, or unparseable.
     Only flat string-valued pairs are kept; nested structures are
     stringified so the schema fields contract ({name: raw string}) holds.
     """
-    if not isinstance(generated_text, str) or "{" not in generated_text:
+    parsed, _ = _extract_json_block(generated_text)
+    if parsed is None:
         return {}
+    fields, _, _ = pairs_to_fields(parsed)
+    return fields
+
+
+def _extract_json_block(generated_text):
+    """Return (parsed_dict_or_None, state).
+
+    State is "ok", "absent" (no fenced block), "truncated" (fence opened
+    but never closed, e.g. generation hit the token cap), or "malformed".
+    Truncated/malformed blocks yield None and must never fabricate pairs.
+    """
+    if not isinstance(generated_text, str) or "{" not in generated_text:
+        return None, "absent"
     start_markers = ("```json", "```JSON", "```")
     text = generated_text
+    fenced = False
     for marker in start_markers:
         idx = text.find(marker)
         if idx != -1:
+            fenced = True
             text = text[idx + len(marker):]
             end = text.find("```")
-            text = text[:end] if end != -1 else text
+            if end == -1:
+                return None, "truncated"
+            text = text[:end]
             break
+    if not fenced:
+        return None, "absent"
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1 or end <= start:
-        return {}
+        return None, "malformed"
     try:
         parsed = json.loads(text[start:end + 1])
     except (ValueError, TypeError):
-        return {}
+        return None, "malformed"
     if not isinstance(parsed, dict):
-        return {}
-    out = {}
+        return None, "malformed"
+    return parsed, "ok"
+
+
+def pairs_to_fields(parsed):
+    """Convert a parsed JSON block into (fields, grid, notes).
+
+    - ``{"pairs": [{"label","value"}, ...]}``: one field per pair, order
+      preserved; duplicate labels keep the FIRST occurrence (recorded in
+      notes, never silently overwritten); grid is one [label, value] row
+      per kept pair (a structure the association scorer already accepts).
+    - legacy flat maps: kept verbatim as before (stringified values).
+    """
+    fields, grid, notes = {}, [], []
+    if not isinstance(parsed, dict):
+        return fields, grid, ["json block not an object; ignored"]
+    raw_pairs = parsed.get("pairs")
+    if isinstance(raw_pairs, list):
+        for entry in raw_pairs:
+            if not isinstance(entry, dict):
+                continue
+            label = entry.get("label", entry.get("name", entry.get("key")))
+            value = entry.get("value", entry.get("val",
+                                                 entry.get("amount")))
+            label = "" if label is None else (
+                label if isinstance(label, str) else str(label)).strip()
+            value = "" if value is None else (
+                value if isinstance(value, str) else str(value)).strip()
+            if not label or not value:
+                continue
+            if label in fields:
+                notes.append(f"duplicate label kept first: {label!r}")
+                continue
+            fields[label] = value
+            grid.append([label, value])
+        notes.append(f"pairs schema: {len(grid)} pairs kept")
+        return fields, grid, notes
     for key, value in parsed.items():
-        out[str(key)] = value if isinstance(value, str) else str(value)
-    return out
+        out_val = value if isinstance(value, str) else str(value)
+        if str(key) in fields:
+            notes.append(f"duplicate label kept first: {str(key)!r}")
+            continue
+        fields[str(key)] = out_val
+    for label, value in fields.items():
+        grid.append([label, value])
+    return fields, grid, notes
+
+
+def split_prose_visual(generated_text):
+    """Split generated prose into (text, visual_description).
+
+    Recognizes headings the model actually emits — "step 2" (legacy),
+    "trend description:" and "visual description:" (case-insensitive) —
+    whichever comes first. No heading: whole text is prose, visual is "".
+    """
+    text = generated_text if isinstance(generated_text, str) else ""
+    lowered = text.lower()
+    cut = -1
+    for heading in ("step 2", "trend description:",
+                    "visual description:"):
+        idx = lowered.find(heading)
+        if idx != -1 and (cut == -1 or idx < cut):
+            cut = idx
+    if cut == -1:
+        return text.strip(), ""
+    return text[:cut].strip(), text[cut:].strip()
 
 
 def blocker_result(doc_id, reason, attempted_model_id=None, device=None):

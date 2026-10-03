@@ -221,12 +221,16 @@ def test_14_score_invokes_existing_scorer_not_duplicate():
 
     def _fake(cmd, **kwargs):
         seen["cmd"] = cmd
+        seen["env"] = kwargs.get("env", {})
         return _Proc()
 
     res = K.run_scorer("some/results.json", runner=_fake)
     assert res["ok"] is True
-    assert "score_ocr_results.py" in seen["cmd"][1]
-    assert "results.json" in seen["cmd"][2]
+    assert "score_ocr_results.py" in seen["cmd"][-2]
+    assert "results.json" in seen["cmd"][-1]
+    # UTF-8 launch (Windows cp1252 safety, content unchanged).
+    assert "-X" in seen["cmd"] and "utf8" in seen["cmd"]
+    assert seen["env"].get("PYTHONUTF8") == "1"
 
 
 # 15. auth -------------------------------------------------------------------------------------------------------------------------------
@@ -404,3 +408,129 @@ def test_27_kernel_url_contains_resolved_username(tmp_path, capsys):
     out = capsys.readouterr().out
     assert ("https://www.kaggle.com/code/"
             "omarabdallah12/mizaniq-qwen-visual") in out
+
+
+# Qwen-only I/O separation (read-only /kaggle/input fix) ----------------------
+def _code_text(tmp_path, model="qwen3-vl-4b", docs=None):
+    """Joined source of code cells only (markdown docs may mention
+    anything; only executed code matters)."""
+    dest = tmp_path / "exec.ipynb"
+    K.build_execution_notebook(
+        ROOT / K.SOURCE_NOTEBOOK, dest, K.resolve_model_id(model),
+        docs or ["DEV-008", "DEV-009"])
+    nb = json.loads(dest.read_text(encoding="utf-8"))
+    return "\n".join("".join(c.get("source", []))
+                     for c in nb["cells"]
+                     if c.get("cell_type") == "code")
+
+
+def test_28_input_workspace_under_kaggle_input(tmp_path):
+    src = _code_text(tmp_path)
+    assert "BENCHMARK_WORKSPACE" in src
+    assert "/kaggle/input" in src
+    assert "WORKSPACE = BENCHMARK_WORKSPACE" in src
+
+
+def test_29_output_dir_is_kaggle_working(tmp_path):
+    src = _code_text(tmp_path)
+    assert "OUTPUT_DIR" in src
+    assert "/kaggle/working" in src
+
+
+def test_30_generated_notebook_never_chdirs(tmp_path):
+    assert "chdir" not in _code_text(tmp_path)
+
+
+def test_31_raw_qwen_files_write_to_output_dir(tmp_path):
+    src = _code_text(tmp_path)
+    assert "OUTPUT_DIR / f'qwen_raw_{doc_id}.json'" in src
+
+
+def test_32_results_meta_write_to_output_dir(tmp_path):
+    src = _code_text(tmp_path)
+    assert "OUTPUT_DIR / 'kaggle_results.json'" in src
+    assert "OUTPUT_DIR / 'experiment_meta.json'" in src
+    assert "qwen_visual_results.json" in src
+    assert "qwen_visual_meta.json" in src
+
+
+def test_33_qwen_only_run_skips_tesseract(tmp_path):
+    src = _code_text(tmp_path)
+    assert "RUN_TESSERACT = False" in src
+    assert "TESS_DOCS" not in src
+
+
+def test_34_qwen_only_run_skips_paddle(tmp_path):
+    src = _code_text(tmp_path)
+    assert "RUN_PADDLE = False" in src
+    assert "RUN_PADDLE_VISUAL = False" in src
+    assert "PADDLE_MODEL_ID" not in src
+
+
+def test_35_qwen_only_run_installs_no_paddle(tmp_path):
+    src = _code_text(tmp_path)
+    assert "paddlepaddle" not in src
+    assert "PaddleOCRVL" not in src
+    assert "from paddleocr import" not in src
+    assert ".predict(" not in src
+    assert "%pip" not in src
+
+
+def test_36_docs_remain_dev008_009(tmp_path):
+    dest = tmp_path / "exec.ipynb"
+    plan = K.build_execution_notebook(
+        ROOT / K.SOURCE_NOTEBOOK, dest, K.resolve_model_id("qwen3-vl-4b"),
+        ["DEV-008", "DEV-009"])
+    assert plan["switches"]["QWEN_DOCS"] == ["DEV-008", "DEV-009"]
+    assert plan["switches"]["RUN_TESSERACT"] is False
+    assert plan["switches"]["RUN_PADDLE"] is False
+    assert plan["switches"]["RUN_PADDLE_VISUAL"] is False
+    assert plan["switches"]["RUN_QWEN_VISUAL"] is True
+
+
+def test_37_exact_4b_model_id_kept(tmp_path):
+    src = _code_text(tmp_path, model="qwen3-vl-4b")
+    assert "QWEN_MODEL_ID = 'Qwen/Qwen3-VL-4B-Instruct'" in src
+
+
+def test_38_no_silent_fallback_in_qwen_only(tmp_path):
+    src = _code_text(tmp_path, model="qwen3-vl-4b")
+    assert "ALLOW_QWEN_FALLBACK = False" in src
+
+
+def test_39_downloader_accepts_qwen_filenames(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    valid = [schema.blank_result("qwen3-vl",
+                                 qwen_adapter.FALLBACK_MODEL_ID,
+                                 "kaggle-T4", "DEV-008")]
+    (run_dir / "qwen_visual_results.json").write_text(
+        json.dumps(valid), encoding="utf-8")
+    report = K.validate_downloaded_results(run_dir)
+    assert report["ok"] is True
+    assert report["results_file"].endswith("qwen_visual_results.json")
+    # Legacy alias still accepted.
+    run2 = tmp_path / "run2"
+    run2.mkdir()
+    (run2 / "kaggle_results.json").write_text(
+        json.dumps(valid), encoding="utf-8")
+    assert K.validate_downloaded_results(run2)["ok"] is True
+
+
+def test_40_scorer_integration_unchanged():
+    assert K.SCORER_SCRIPT == Path("scripts/score_ocr_results.py")
+
+
+def test_41_write_vs_inference_failures_distinguishable(tmp_path):
+    src = _code_text(tmp_path)
+    assert "OUTPUT_WRITE_FAILED" in src
+    assert "MODEL_INFERENCE_FAILED" in src
+
+
+def test_42_no_writes_target_kaggle_input(tmp_path):
+    src = _code_text(tmp_path)
+    for line in src.splitlines():
+        s = line.strip()
+        if "open(" in s and ("'w'" in s or '"w"' in s):
+            assert "OUTPUT_DIR" in s or s.startswith("with open(rp,"), s
+        assert "open(" not in s or "/kaggle/input" not in s, s
