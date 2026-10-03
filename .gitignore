@@ -7,3 +7,8 @@ __pycache__/
 # Generated canonical data (reproducible via scripts/generate_canonical_data.py;
 # never commit: validated locally, rebuilt from seed)
 data/
+
+# Kaggle credentials + generated kernel staging (never commit secrets/weights)
+kaggle.json
+.kaggle/
+infra/kaggle/build/
