@@ -8,11 +8,18 @@ payment method on this account.
 
 ## Setup
 
-1. Install the Kaggle CLI: `pip install kaggle`.
-2. Authenticate (supported mechanisms only, never hardcoded):
+1. Install the Kaggle CLI: `pip install kaggle` (verified with 2.2.4).
+2. Authenticate (supported mechanisms only, never hardcoded; checked in
+   this order):
+   - `kaggle auth login` (current OAuth CLI flow; validated safely via
+     `kaggle datasets list --mine`, tokens never read or printed), or
    - `KAGGLE_USERNAME` + `KAGGLE_KEY` environment variables, or
    - `~/.kaggle/kaggle.json` containing `{"username": "...", "key": "..."}`
      (permissions `600` on Linux/macOS).
+   The kernel owner slug resolves as `--kaggle-user` > `KAGGLE_USERNAME`
+   > kaggle.json username > OAuth account owner. If autodetection fails,
+   pass `--kaggle-user <name>` explicitly; if it still cannot resolve,
+   the runner fails clearly before any submission.
 3. Attach access to the benchmark dataset
    `omarabdallah12/mizaniq-ocr-benchmark-v0-1` (override with `--dataset`
    if your copy lives under a different owner).

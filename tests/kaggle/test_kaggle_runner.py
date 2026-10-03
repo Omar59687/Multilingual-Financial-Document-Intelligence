@@ -96,20 +96,45 @@ def test_6_metadata_points_to_generated_notebook(tmp_path):
     assert K.AUTOMATION_CELL_MARKER in gen
 
 
+def _fake_oauth_cli(refs=("omarabdallah12/mizaniq-ocr-benchmark-v0-1",),
+                    returncode=0, raw=None):
+    """Fake `kaggle datasets list --mine` runner (never touches tokens)."""
+
+    class _Proc:
+        pass
+
+    def _run(cmd, **kwargs):
+        assert list(cmd[:3]) == ["kaggle", "datasets", "list"]
+        assert "--mine" in cmd
+        assert "print-access-token" not in " ".join(cmd)
+        proc = _Proc()
+        proc.returncode = returncode
+        proc.stdout = raw if raw is not None else json.dumps(
+            [{"ref": ref} for ref in refs])
+        proc.stderr = ""
+        return proc
+
+    return _run
+
+
+def _failing_cli(cmd, **kwargs):
+    raise AssertionError(f"CLI must not be called: {cmd}")
+
+
 # 7. dry-run ----------------------------------------------------------------------------------------------------------
 def test_7_dry_run_submits_nothing(tmp_path, capsys):
     script = _load_submit_script()
     staging = tmp_path / "staging"
 
-    def _boom(cmd, **kwargs):
-        raise AssertionError(f"must not call Kaggle: {cmd}")
-
-    script._run_cli = _boom
+    script._run_cli = _failing_cli
     rc = script.main(["--dry-run", "--staging-dir", str(staging),
-                      "--model", "qwen3-vl-4b"])
+                      "--model", "qwen3-vl-4b",
+                      "--kaggle-user", "testuser"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "dry-run" in out
+    assert "testuser/mizaniq-qwen-visual" in out
+    assert "YOURUSERNAME" not in out
     assert (staging / "kernel-metadata.json").is_file()
     assert (staging / script.EXEC_NOTEBOOK_NAME).is_file()
 
@@ -206,20 +231,24 @@ def test_14_score_invokes_existing_scorer_not_duplicate():
 
 # 15. auth -------------------------------------------------------------------------------------------------------------------------------
 def test_15_missing_auth_clear_error(tmp_path):
-    res = K.check_auth(env={}, kaggle_dir=tmp_path)
+    res = K.check_auth(env={}, kaggle_dir=tmp_path,
+                       cli_runner=_fake_oauth_cli(refs=(), returncode=1))
     assert res["ok"] is False
     assert "KAGGLE_USERNAME" in res["detail"]
     assert "kaggle.json" in res["detail"]
+    assert "kaggle auth login" in res["detail"]
     good = K.check_auth(
         env={"KAGGLE_USERNAME": "u", "KAGGLE_KEY": "k"},
-        kaggle_dir=tmp_path)
+        kaggle_dir=tmp_path, cli_runner=_failing_cli)
     assert good["ok"] is True and good["method"] == "env"
     cred_dir = tmp_path / ".kaggle"
     cred_dir.mkdir()
     (cred_dir / "kaggle.json").write_text(
         json.dumps({"username": "u", "key": "k"}), encoding="utf-8")
-    file_auth = K.check_auth(env={}, kaggle_dir=tmp_path)
+    file_auth = K.check_auth(env={}, kaggle_dir=tmp_path,
+                             cli_runner=_failing_cli)
     assert file_auth["ok"] is True
+    assert file_auth["method"] == "kaggle_json"
 
 
 # 16. no silent 8B->4B ------------------------------------------------------------------------------------------------------------------------------
@@ -265,3 +294,113 @@ def test_18_kernel_url_printed_on_failure():
                           ["DEV-008"], "o/d", "ERROR", 12.0, [])
     assert log["kernel_url"].endswith("owner/slug")
     assert "KAGGLE_KEY" not in json.dumps(log)
+
+
+# OAuth CLI auth (Kaggle CLI 2.2.4 `kaggle auth login`) -----------------------------------------------
+def test_19_oauth_cli_auth_succeeds(tmp_path):
+    res = K.check_auth(env={}, kaggle_dir=tmp_path,
+                       cli_runner=_fake_oauth_cli())
+    assert res["ok"] is True
+    assert res["method"] == "oauth_cli"
+
+
+def test_20_oauth_mode_reported(tmp_path, capsys):
+    script = _load_submit_script()
+    staging = tmp_path / "staging"
+    script._run_cli = _failing_cli
+    real_check = K.check_auth
+    real_resolve = K.resolve_username
+    K.check_auth = lambda *a, **k: real_check(
+        env={}, kaggle_dir=tmp_path,
+        cli_runner=_fake_oauth_cli())
+    K.resolve_username = lambda *a, **k: real_resolve(
+        None, env={}, kaggle_dir=tmp_path,
+        cli_runner=_fake_oauth_cli())
+    try:
+        rc = script.main(["--dry-run", "--staging-dir", str(staging)])
+    finally:
+        K.check_auth = real_check
+        K.resolve_username = real_resolve
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "oauth_cli" in out
+    assert "omarabdallah12/mizaniq-qwen-visual" in out
+
+
+def test_21_username_resolved_from_oauth(tmp_path):
+    assert K.resolve_username(
+        None, env={}, kaggle_dir=tmp_path,
+        cli_runner=_fake_oauth_cli()) == "omarabdallah12"
+
+
+def test_22_explicit_kaggle_user_overrides_autodetection(tmp_path):
+    assert K.resolve_username(
+        "someone", env={}, kaggle_dir=tmp_path,
+        cli_runner=_fake_oauth_cli()) == "someone"
+    assert K.resolve_username(
+        "envuser",
+        env={"KAGGLE_USERNAME": "envuser", "KAGGLE_KEY": "k"},
+        kaggle_dir=tmp_path,
+        cli_runner=_fake_oauth_cli()) == "envuser"
+
+
+def test_23_legacy_env_still_preferred_over_oauth(tmp_path):
+    res = K.check_auth(
+        env={"KAGGLE_USERNAME": "u", "KAGGLE_KEY": "k"},
+        kaggle_dir=tmp_path, cli_runner=_fake_oauth_cli())
+    assert res["ok"] is True and res["method"] == "env"
+
+
+def test_24_unresolved_username_blocks_real_submission(tmp_path,
+                                                       monkeypatch):
+    script = _load_submit_script()
+    script._run_cli = _failing_cli
+
+    def _unresolved(*args, **kwargs):
+        raise ValueError("Kaggle username unresolved: ...")
+
+    monkeypatch.setattr(K, "resolve_username", _unresolved)
+    rc = script.main(["--staging-dir", str(tmp_path / "staging")])
+    assert rc == 2
+
+
+def test_25_generated_metadata_never_yourusername(tmp_path):
+    script = _load_submit_script()
+    staging = tmp_path / "staging"
+    script._run_cli = _failing_cli
+    rc = script.main(["--dry-run", "--staging-dir", str(staging),
+                      "--kaggle-user", "testuser"])
+    assert rc == 0
+    blob = (staging / "kernel-metadata.json").read_text(encoding="utf-8")
+    assert "YOURUSERNAME" not in blob
+    assert "testuser/mizaniq-qwen-visual" in blob
+
+
+def test_26_no_secrets_written_or_logged(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("KAGGLE_USERNAME", "u")
+    monkeypatch.setenv("KAGGLE_KEY", "supersecret123")
+    script = _load_submit_script()
+    staging = tmp_path / "staging"
+    script._run_cli = _failing_cli
+    rc = script.main(["--dry-run", "--staging-dir", str(staging),
+                      "--kaggle-user", "u"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "supersecret123" not in out
+    res = K.check_auth(cli_runner=_failing_cli)
+    assert "supersecret123" not in json.dumps(res)
+    meta = json.loads(
+        (staging / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert not K.metadata_has_secrets(meta)
+
+
+def test_27_kernel_url_contains_resolved_username(tmp_path, capsys):
+    script = _load_submit_script()
+    staging = tmp_path / "staging"
+    script._run_cli = _failing_cli
+    rc = script.main(["--dry-run", "--staging-dir", str(staging),
+                      "--kaggle-user", "omarabdallah12"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert ("https://www.kaggle.com/code/"
+            "omarabdallah12/mizaniq-qwen-visual") in out

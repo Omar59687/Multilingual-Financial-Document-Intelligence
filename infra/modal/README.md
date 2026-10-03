@@ -73,9 +73,15 @@ Created automatically (directory is made if missing):
 - `data/benchmark/results/modal_paddle_raw_DEV-009.json` — preserved
   raw Paddle payloads (deterministic names, no hand correction).
 
-## 6. A10G resource choice
+## 6. T4 resource choice (A10G billing fallback)
 
-- Exactly one `A10G` GPU per inference call (`gpu="A10G"`).
+- Exactly one `T4` GPU per inference call (`gpu="T4"`).
+- T4 is the experimental GPU because Modal refused A10G allocation with
+  "Please add a payment method to use A10G GPU functions", and no payment
+  method can be added. This does NOT imply T4 is technically preferred —
+  it is a fallback infrastructure experiment.
+- If Modal also blocks T4 for billing authorization, report that as an
+  account limitation (do not work around billing gates).
 - No multi-GPU runs, no A100/H100 in this task.
 - No always-on containers: Modal scales to zero after completion.
 
@@ -108,10 +114,15 @@ Created automatically (directory is made if missing):
   `data/dev/dataset_v0.1/documents/...`. Rebuild the workspace if absent.
 - `TIMEOUT`: expected for a >300s document; check the saved TIMEOUT
   result and Modal dashboard logs, then retry or investigate the image.
+  Preserve the result as-is; do NOT increase the timeout (the Kaggle T4
+  ran >20 minutes on DEV-008, so this Modal T4 run stays hard-bounded
+  at 300s).
 - `FAILED`: see the saved result's `warnings` and the raw file for the
   remote error string.
-- GPU queue delays: Modal may queue if no A10G is free; the 300s timeout
-  still bounds each call.
+- GPU queue/billing delays: Modal may queue if no T4 is free, or refuse
+  T4 with a billing authorization message. A billing refusal is an
+  account limitation — report it, do not work around it. The 300s
+  timeout still bounds each admitted call.
 - Never edit frozen truth/DEV fixtures to fix an inference miss; record
   it in results/meta instead.
 

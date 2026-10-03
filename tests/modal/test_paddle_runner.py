@@ -12,7 +12,7 @@ Covers the task gates with the Modal/remote boundary mocked:
  9. raw output path naming
 10. no ground-truth leakage into inference input
 11. chart_recognition recorded true
-12. GPU configuration is single A10G
+12. GPU configuration is single T4 (A10G billing-blocked fallback)
 """
 
 import importlib.util
@@ -135,12 +135,13 @@ def test_5b_adapt_remote_payload_uses_real_v16_adapter():
         "paddleocr_version": "3.7.0",
         "pipeline_version": "v1.6",
         "chart_recognition": True,
-        "gpu_type": "A10G",
+        "gpu_type": "T4",
         "device": RUNNER.DEVICE_LABEL,
         "warnings": [],
     }
     result = RUNNER.adapt_remote_payload(payload, raw_path="raw.json")
     assert result["status"] == "OK"
+    assert result["gpu_type"] == "T4"
     assert "Annual Revenue 2024" in result["text"]
     assert result["fields"] == {}  # v1.6 never invents semantic fields
     assert RUNNER.validate_schema(result) == []
@@ -252,16 +253,21 @@ def test_11_chart_recognition_recorded_true():
 
 
 # 12. GPU config ------------------------------------------------------------------------------------------------
-def test_12_gpu_configuration_is_single_a10g():
-    assert RUNNER.GPU_TYPE == "A10G"
+def test_12_gpu_configuration_is_single_t4():
+    assert RUNNER.GPU_TYPE == "T4"
+    assert RUNNER.DEVICE_LABEL == "modal-T4"
     assert RUNNER.TIMEOUT_S == 300
     assert RUNNER.APP_NAME == "mizaniq-paddle-visual"
     source = (ROOT / "infra" / "modal" / "paddle_runner.py").read_text(
         encoding="utf-8"
     )
-    assert 'gpu=GPU_TYPE' in source or 'gpu="A10G"' in source
+    assert 'gpu=GPU_TYPE' in source or 'gpu="T4"' in source
     assert "timeout=TIMEOUT_S" in source or "timeout=300" in source
     assert "retries=0" in source
+    # T4 fallback: A10G must no longer be requested (may be mentioned in
+    # comments/docstring only as the billing-blocked predecessor).
+    assert 'gpu="A10G"' not in source
+    assert "gpu='A10G'" not in source
     # No active A100/H100 GPU requests (docstring may mention them only as
     # explicitly excluded) and no multi-GPU request syntax.
     assert 'gpu="A100' not in source

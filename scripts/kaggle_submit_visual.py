@@ -41,6 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dataset", default=K.DEFAULT_DATASET_SLUG,
         help="Kaggle dataset slug owner/name")
     parser.add_argument(
+        "--kaggle-user", default=None,
+        help="Kaggle username for the kernel slug (default: autodetect "
+             "from KAGGLE_USERNAME / kaggle.json / OAuth CLI)")
+    parser.add_argument(
         "--kernel-id", default=None,
         help="kernel slug owner/name (default: derived from username)")
     parser.add_argument(
@@ -63,19 +67,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="staging dir for generated notebook/metadata "
              "(default: infra/kaggle/build/<stamp>)")
     return parser
-
-
-def _default_kernel_id() -> str:
-    user = ""
-    cred = Path.home() / ".kaggle" / "kaggle.json"
-    if cred.is_file():
-        try:
-            user = json.loads(cred.read_text(encoding="utf-8")).get(
-                "username", "")
-        except (ValueError, OSError):
-            user = ""
-    owner = user.strip().lower().replace("_", "-") or "YOURUSERNAME"
-    return f"{owner}/mizaniq-qwen-visual"
 
 
 def _run_cli(cmd: list) -> subprocess.CompletedProcess:
@@ -102,7 +93,12 @@ def main(argv=None) -> int:
         return 2
 
     auth = K.check_auth()
-    kernel_id = args.kernel_id or _default_kernel_id()
+    try:
+        username = K.resolve_username(args.kaggle_user)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    kernel_id = args.kernel_id or f"{username}/mizaniq-qwen-visual"
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     staging = (Path(args.staging_dir) if args.staging_dir

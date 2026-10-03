@@ -108,13 +108,103 @@ def _check_docs(items) -> list:
 # Authentication (supported mechanisms only, never hardcoded)
 # --------------------------------------------------------------------------
 
-def check_auth(env=None, kaggle_dir=None) -> dict:
+# Safe, non-destructive CLI probe: succeeds only when authenticated and
+# reveals the account via dataset `ref` ("owner/slug") without touching
+# any token. NEVER call `kaggle auth print-access-token` here.
+_OAUTH_PROBE_CMD = ("kaggle", "datasets", "list", "--mine",
+                    "--page-size", "1", "--format", "json")
+
+
+def _run_cli_json(cmd, runner=None, timeout_s: float = 60.0):
+    """Run a CLI command expecting JSON stdout.
+
+    Returns ``(ok, payload)``. ``runner`` is injectable for tests
+    (same ``(cmd, **kwargs) -> CompletedProcess`` protocol as
+    :func:`subprocess.run`). Only ``returncode``/``stdout`` are read —
+    never any token content.
+    """
+    run = runner or subprocess.run
+    try:
+        proc = run(list(cmd), capture_output=True, text=True,
+                   timeout=timeout_s)
+    except (OSError, subprocess.SubprocessError):
+        return False, None
+    if getattr(proc, "returncode", 1) != 0:
+        return False, None
+    try:
+        return True, json.loads(getattr(proc, "stdout", "") or "null")
+    except ValueError:
+        return False, None
+
+
+def _owner_from_dataset_refs(payload):
+    """Extract the account owner from a dataset-list payload's refs."""
+    items = []
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        for key in ("datasets", "data", "items", "results"):
+            if isinstance(payload.get(key), list):
+                items = payload[key]
+                break
+    for item in items:
+        if isinstance(item, dict) and isinstance(item.get("ref"), str) \
+                and "/" in item["ref"]:
+            owner = item["ref"].split("/")[0].strip()
+            if owner:
+                return owner
+    return None
+
+
+def check_oauth_cli(runner=None):
+    """Validate current Kaggle OAuth CLI authentication (non-destructive).
+
+    Returns ``{"ok", "username", "detail"}``. ``username`` is the account
+    owner when a dataset ref reveals it, else None (auth may still be
+    valid, e.g. an account with no datasets). Never reads or prints
+    OAuth token contents.
+    """
+    ok, payload = _run_cli_json(_OAUTH_PROBE_CMD, runner)
+    if not ok:
+        return {"ok": False, "username": None,
+                "detail": "kaggle OAuth CLI probe failed "
+                          "(datasets list --mine unsuccessful)"}
+    owner = _owner_from_dataset_refs(payload)
+    if owner:
+        return {"ok": True, "username": owner,
+                "detail": f"OAuth CLI authenticated as {owner} "
+                          "(kaggle datasets list --mine succeeded)"}
+    return {"ok": True, "username": None,
+            "detail": "OAuth CLI authenticated (datasets list --mine "
+                      "succeeded, no owner ref found)"}
+
+
+def _kaggle_json_path(kaggle_dir=None) -> Path:
+    home = Path(kaggle_dir) if kaggle_dir is not None else Path.home()
+    cred = home / ".kaggle" / "kaggle.json"
+    # Allow tests to pass a dir that IS the .kaggle dir.
+    if home.name == ".kaggle" and home / "kaggle.json" != cred:
+        cred = home / "kaggle.json"
+    return cred
+
+
+def _kaggle_json_username(kaggle_dir=None):
+    try:
+        data = json.loads(_kaggle_json_path(kaggle_dir).read_text(
+            encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+    user = data.get("username") if isinstance(data, dict) else None
+    return str(user).strip() or None if user else None
+
+
+def check_auth(env=None, kaggle_dir=None, cli_runner=None) -> dict:
     """Check Kaggle credentials without reading secrets into logs.
 
-    Returns ``{"ok": bool, "method": str, "detail": str}``. ``method`` is
-    ``"env"`` (KAGGLE_USERNAME/KAGGLE_KEY), ``"kaggle.json"``
-    (``~/.kaggle/kaggle.json``), or ``"missing"``. Secret VALUES are
-    never included in the result.
+    Order: legacy env, legacy kaggle.json, current OAuth CLI probe.
+    Returns ``{"ok": bool, "method": str, "detail": str}`` with method
+    in ``env`` / ``kaggle_json`` / ``oauth_cli`` / ``missing``. Secret
+    VALUES (keys, tokens) are never included in the result.
     """
     env = env if env is not None else os.environ
     if env.get("KAGGLE_USERNAME") and env.get("KAGGLE_KEY"):
@@ -123,11 +213,7 @@ def check_auth(env=None, kaggle_dir=None) -> dict:
             "method": "env",
             "detail": "KAGGLE_USERNAME + KAGGLE_KEY are set",
         }
-    home = Path(kaggle_dir) if kaggle_dir is not None else Path.home()
-    cred = home / ".kaggle" / "kaggle.json"
-    # Allow tests to pass a dir that IS the .kaggle dir.
-    if home.name == ".kaggle" and home / "kaggle.json" != cred:
-        cred = home / "kaggle.json"
+    cred = _kaggle_json_path(kaggle_dir)
     if cred.is_file():
         try:
             data = json.loads(cred.read_text(encoding="utf-8"))
@@ -137,10 +223,11 @@ def check_auth(env=None, kaggle_dir=None) -> dict:
                 "method": "missing",
                 "detail": f"{cred} is not valid JSON",
             }
-        if data.get("username") and data.get("key"):
+        if isinstance(data, dict) and data.get("username") \
+                and data.get("key"):
             return {
                 "ok": True,
-                "method": "kaggle.json",
+                "method": "kaggle_json",
                 "detail": f"credentials found at {cred}",
             }
         return {
@@ -148,15 +235,48 @@ def check_auth(env=None, kaggle_dir=None) -> dict:
             "method": "missing",
             "detail": f"{cred} lacks username/key fields",
         }
+    oauth = check_oauth_cli(runner=cli_runner)
+    if oauth["ok"]:
+        return {"ok": True, "method": "oauth_cli",
+                "detail": oauth["detail"]}
     return {
         "ok": False,
         "method": "missing",
         "detail": (
-            "Kaggle auth missing: set KAGGLE_USERNAME + KAGGLE_KEY or "
-            f"place kaggle.json at {Path.home() / '.kaggle' / 'kaggle.json'}. "
+            "Kaggle auth missing: run `kaggle auth login`, or set "
+            "KAGGLE_USERNAME + KAGGLE_KEY, or place kaggle.json at "
+            f"{Path.home() / '.kaggle' / 'kaggle.json'}. "
             "See infra/kaggle/README.md. Never paste secrets into source."
         ),
     }
+
+
+def resolve_username(explicit=None, env=None, kaggle_dir=None,
+                     cli_runner=None) -> str:
+    """Resolve the Kaggle account username, or raise ValueError.
+
+    Order: explicit ``--kaggle-user`` > ``KAGGLE_USERNAME`` env > legacy
+    kaggle.json username > authenticated OAuth CLI account owner.
+    Never returns a placeholder: unresolvable means a clear failure
+    before any real submission, so generated metadata never contains
+    ``YOURUSERNAME``.
+    """
+    if explicit is not None and str(explicit).strip():
+        return str(explicit).strip()
+    env = env if env is not None else os.environ
+    if env.get("KAGGLE_USERNAME") and str(env["KAGGLE_USERNAME"]).strip():
+        return str(env["KAGGLE_USERNAME"]).strip()
+    file_user = _kaggle_json_username(kaggle_dir)
+    if file_user:
+        return file_user
+    oauth = check_oauth_cli(runner=cli_runner)
+    if oauth["ok"] and oauth["username"]:
+        return oauth["username"]
+    raise ValueError(
+        "Kaggle username unresolved: pass --kaggle-user, set "
+        "KAGGLE_USERNAME, provide kaggle.json, or run "
+        "`kaggle auth login` with an account owning datasets."
+    )
 
 
 # --------------------------------------------------------------------------

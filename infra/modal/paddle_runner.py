@@ -6,8 +6,11 @@ Replaces manual Kaggle notebook interaction with ONE local command::
 
 Design notes (locked for this task):
 
-- Modal app ``mizaniq-paddle-visual``, single A10G GPU, one document at a
+- Modal app ``mizaniq-paddle-visual``, single T4 GPU, one document at a
   time, scale-to-zero (no always-on containers, no A100/H100).
+  T4 is a fallback: A10G allocation was refused by Modal without a
+  payment method ("Please add a payment method to use A10G GPU
+  functions"). This does NOT imply T4 is technically preferred.
 - Real Modal timeout ``timeout=300`` on the remote function (not a fake
   elapsed-time check). Timeouts surface as TIMEOUT results locally.
 - ``retries=0``: never silently retry forever.
@@ -41,7 +44,7 @@ import modal
 # --------------------------------------------------------------------------
 
 APP_NAME = "mizaniq-paddle-visual"
-GPU_TYPE = "A10G"  # single A10G only; no A100/H100 in this task
+GPU_TYPE = "T4"  # single T4 fallback (A10G blocked by Modal billing); no A100/H100
 TIMEOUT_S = 300  # hard Modal timeout per remote inference call
 TIMEOUT_MS = TIMEOUT_S * 1000
 
@@ -49,7 +52,7 @@ MODEL_CANDIDATE = "paddleocr-vl"
 MODEL_ID = "PaddleOCR-VL-1.6"
 PIPELINE_VERSION = "v1.6"
 CHART_RECOGNITION = True  # visual benchmark: explicitly enabled
-DEVICE_LABEL = "modal-A10G"
+DEVICE_LABEL = "modal-T4"
 
 # Pinned to the successful Kaggle experiment (PaddleOCR 3.7.0 /
 # PaddlePaddle 3.2.1). Task allows >=3.2.1; we lock exact for repro.
@@ -443,7 +446,7 @@ paddle_cache_volume = modal.Volume.from_name(
 
 @app.function(
     image=paddle_image,
-    gpu=GPU_TYPE,  # exactly one A10G
+    gpu=GPU_TYPE,  # exactly one T4 (A10G fallback, billing-blocked)
     timeout=TIMEOUT_S,  # REAL Modal timeout: kills the call at 300s
     retries=0,  # never silently retry forever
     volumes={CACHE_MOUNT_PATH: paddle_cache_volume},
