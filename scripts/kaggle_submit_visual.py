@@ -172,10 +172,13 @@ def main(argv=None) -> int:
     if out.returncode != 0:
         print(out.stderr or "kaggle kernels output failed", file=sys.stderr)
         return 1
-    # Deterministic local names (existing notebook writes kaggle_* names).
-    for kernel_name, local_name in K.DOWNLOAD_RENAMES.items():
-        src_file, dest_file = run_dir / kernel_name, run_dir / local_name
-        if src_file.is_file() and not dest_file.exists():
+    # Deterministic local names: the fixed notebook writes model-specific
+    # qwen_visual_* files (plus kaggle_* aliases); accept either.
+    for local_name, kernel_name in (
+            (K.PRIMARY_RESULTS, "kaggle_results.json"),
+            (K.PRIMARY_META, "experiment_meta.json")):
+        dest_file, src_file = run_dir / local_name, run_dir / kernel_name
+        if not dest_file.exists() and src_file.is_file():
             dest_file.write_bytes(src_file.read_bytes())
 
     downloaded = sorted(p.name for p in run_dir.iterdir() if p.is_file())
@@ -187,7 +190,8 @@ def main(argv=None) -> int:
 
     scorer_record = None
     if args.score:
-        results_file = run_dir / K.DOWNLOAD_RENAMES["kaggle_results.json"]
+        results_file = Path(
+            K.validate_downloaded_results(run_dir)["results_file"])
         scored = K.run_scorer(results_file)
         scorer_record = {"ok": scored["ok"],
                          "returncode": scored["returncode"]}
