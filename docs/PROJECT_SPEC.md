@@ -4,7 +4,7 @@ AI-Powered Finance Document Intelligence System
 > Authoritative description of WHAT we are building.
 > Related docs: [ARCHITECTURE.md](ARCHITECTURE.md) · [ROADMAP.md](ROADMAP.md) · [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) · [DATASET_DESIGN.md](DATASET_DESIGN.md) · [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md) · [EVALUATION_PLAN.md](EVALUATION_PLAN.md)
 >
-> Current status: Phase 0 — Foundation and Dataset Design. Implementation has not started yet.
+> Current status: Phase 3 — Structured Financial Extraction DONE (architect gate 2026-10-04: G1 PASS under Option B P≥0.99/R≥0.90 with measured P 1.000 / R 0.904; G4 7/7 PASS). Arabic/visual/prose limitations are mandatory follow-ups before G6. Next: Phase 4 (not started).
 
 ## 1. Project Goal
 

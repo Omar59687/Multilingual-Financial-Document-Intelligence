@@ -121,6 +121,26 @@ class Metric(str, Enum):
       being invented into canonical keys.
     - Dammam pre-2019 rows are ABSENT (NULL, never zero); that absence rule
       is enforced in ``validation.py``, not by adding a metric.
+    - Balance-sheet grain (``annual_balance_sheet``, 11 metrics): cash,
+      accounts_receivable, inventory, other_current_assets,
+      property_plant_equipment, total_assets, accounts_payable, debt,
+      other_liabilities, total_liabilities, equity. Component roles:
+      R9 total_assets = cash + accounts_receivable + inventory +
+      other_current_assets + property_plant_equipment; R10
+      total_liabilities = accounts_payable + debt + other_liabilities;
+      R11 total_assets = total_liabilities + equity (all exact to 0.01;
+      reconciliation is enforced in ``validation.py``, not here).
+    - Naming note: the canonical CSV column is ``property_and_equipment``
+      but the mandated canonical metric name is
+      ``property_plant_equipment`` — use the mandated name here; the
+      column-to-metric mapping lives at this boundary.
+    - Deferred (no canonical need): ``current_assets``,
+      ``current_liabilities`` and ``retained_earnings`` are NOT members —
+      the canonical annual_balance_sheet model has no such columns.
+    - No display-text variants: no ``Cash`` / ``TOTAL_ASSETS`` /
+      ``total-assets`` / ``cash_and_cash_equivalents`` — aliases belong
+      in the normalization layer (``validation.py``), never as enum
+      duplication.
     """
 
     REVENUE = "revenue"
@@ -147,6 +167,17 @@ class Metric(str, Enum):
     BUDGET = "budget"
     BUDGET_AMOUNT = "budget_amount"
     ACTUAL = "actual"
+    CASH = "cash"
+    ACCOUNTS_RECEIVABLE = "accounts_receivable"
+    INVENTORY = "inventory"
+    OTHER_CURRENT_ASSETS = "other_current_assets"
+    PROPERTY_PLANT_EQUIPMENT = "property_plant_equipment"
+    TOTAL_ASSETS = "total_assets"
+    ACCOUNTS_PAYABLE = "accounts_payable"
+    DEBT = "debt"
+    OTHER_LIABILITIES = "other_liabilities"
+    TOTAL_LIABILITIES = "total_liabilities"
+    EQUITY = "equity"
 
 
 Precision = Literal["exact-visible", "display-rounded", "unknown"]

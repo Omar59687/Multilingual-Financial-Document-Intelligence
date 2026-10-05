@@ -1,0 +1,23 @@
+# MizanIQ Phase 3 — optional DuckDB persistence extra.
+# Core install (requirements.txt) stays duckdb-free so stdlib-only import and
+# foundation tests work without this file. Install only for live-DB work:
+#   pip install -r requirements-duckdb.txt
+#
+# Exact pin justification (verified 2026-10-03, Python 3.12.7 AMD64 Windows 11,
+# NumPy 2.2.6):
+# - duckdb==1.5.6 is the current stable release (2026-09-28; Requires-Python
+#   >=3.10; cp312 classifiers include 3.12) with a published
+#   duckdb-1.5.6-cp312-cp312-win_amd64.whl on PyPI, matching this env exactly.
+# - 1.5.6 ships bugfixes/security patches over the 1.5 line; 2.0.0 is only a
+#   tentative Oct-2026 major (avoid pre-release/major churn per
+#   DEVELOPMENT_RULES Rule 13). The 1.4 LTS line is older than stable.
+# - 1.5.x requires numpy>=2 on cp312/win-AMD64, compatible with the env's
+#   NumPy 2.2.6; pre-0.10-era pins lack cp312 Windows wheels and predate
+#   numpy-2 support.
+# - DDL features used (PK/CHECK/DECIMAL(18,2)/IF NOT EXISTS/OR REPLACE VIEW,
+#   ROUND(SUM())) are long-stable; no version-forcing syntax is needed.
+# - Env caveat (this machine): the system pandas is built against NumPy 1.x and
+#   cannot import under NumPy 2.2.6; duckdb's parameterized path probes pandas per
+#   call, emitting swallowed-traceback stderr noise that is functionally harmless
+#   (verified: Decimal/ON CONFLICT/executemany all correct). Use fetchall only.
+duckdb==1.5.6

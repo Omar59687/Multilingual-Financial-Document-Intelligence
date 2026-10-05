@@ -1,25 +1,34 @@
 """DuckDB TARGET DESIGN for approved financial records (MizanIQ Phase 3).
 
-Foundation milestone — declarative ONLY (scope correction).
+Persistence slices 1–2 — ``init_db(connection)`` + ``connect`` /
+``insert_records``.
 
-This module describes the DuckDB target shape that a LATER bounded Phase 3
-task will implement persistence against. It performs NO persistence itself:
+This module is declarative plus two narrow persistence entry points:
 
-- no connections (no ``connect``),
-- no database initialization (no ``init_db``),
-- no record insertion (no ``insert_records``),
-- no physical database file is ever created here,
-- ``duckdb`` is not imported, not required, and must not be added to
-  ``requirements.txt`` for this milestone.
-
-Contents are pure data + pure functions (stdlib only):
-
-- :data:`SCHEMA_SQL` — the proposed DDL (table + indexes + R6 view),
+- :data:`SCHEMA_SQL` — the DDL (table + indexes + R6 view),
 - :data:`TABLE_NAME` / :data:`VIEW_NAME` / :data:`COLUMNS`,
 - :func:`ddl_statements` — deterministic split of :data:`SCHEMA_SQL`,
+- :func:`connect` — open a DuckDB connection (optional ``duckdb`` extra;
+  see ``requirements-duckdb.txt``); the caller closes it,
+- :func:`init_db` — execute :func:`ddl_statements` on a caller-owned
+  connection (same optional extra),
+- :func:`insert_records` — ordered, deduplicated writes of pre-validated
+  records on a caller-owned connection (same optional extra),
 - :func:`sql_company_total` / :func:`sql_branch_comparison` /
   :func:`sql_budget_variance_note` — DOCUMENTED query patterns (plain SQL
-  strings, never executed here) showing how deterministic calculations run
+  strings, never executed here).
+
+Explicitly OUT of this slice (still absent here):
+
+- no record-update/delete helpers, no query library (later slices),
+- no ``duckdb.connect`` call outside :func:`connect`,
+- this module never closes a connection it did not open,
+- no top-level ``duckdb`` import: the only runtime imports are
+  function-local optional imports inside :func:`connect`/:func:`init_db`/
+  :func:`insert_records`, so ``import extraction.store`` works with
+  stdlib only.
+
+  Documented query patterns show how deterministic calculations run
   in SQL per Evaluation Plan §9. They exist so the design is reviewable
   without a live database.
 
@@ -33,12 +42,21 @@ Full design: ``docs/STRUCTURED_EXTRACTION_DESIGN.md`` §12.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # optional dependency: never imported at runtime here
+    import duckdb
+
 __all__ = [
     "SCHEMA_SQL",
     "TABLE_NAME",
     "VIEW_NAME",
     "COLUMNS",
     "ddl_statements",
+    "connect",
+    "init_db",
+    "insert_records",
     "sql_company_total",
     "sql_branch_comparison",
     "sql_budget_variance_note",
@@ -66,7 +84,7 @@ COLUMNS: tuple[str, ...] = (
 )
 
 SCHEMA_SQL: str = """-- MizanIQ Phase 3 structured store (DuckDB, SAR-only, branch-month grain)
--- TARGET DESIGN ONLY: no persistence behavior in this milestone
+-- Persistence slice 1: executed by init_db(connection) on a caller-owned connection
 -- Approved-only writes: only validated records enter this table
 -- Deterministic numerical calculations run in SQL over this table
 -- NOTE Dammam (BR-DMM) pre-2019 rows must never be inserted at all
@@ -118,6 +136,168 @@ def ddl_statements() -> list[str]:
     required. Each returned string is stripped of surrounding whitespace.
     """
     return [part.strip() for part in SCHEMA_SQL.split(";") if part.strip()]
+
+
+def connect(database: str = ":memory:") -> Any:
+    """Open a DuckDB connection for the structured store.
+
+    Thin wrapper over ``duckdb.connect`` so the optional dependency and its
+    install hint live in one place. The caller owns the returned handle and
+    must close it; this module never closes connections. ``:memory:`` (the
+    default) has no filesystem side effects; a file path creates/opens that
+    database file via the driver. Schema setup is separate — call
+    :func:`init_db` on the returned connection before inserting.
+    """
+    if not isinstance(database, str) or not database:
+        raise TypeError("connect requires a non-empty database path string")
+    try:
+        import duckdb  # noqa: F401  (optional extra, function-local only)
+    except ImportError as exc:
+        raise ImportError(
+            "duckdb is required for connect; install the optional extra: "
+            "pip install -r requirements-duckdb.txt"
+        ) from exc
+    return duckdb.connect(database)
+
+
+def init_db(connection: Any) -> None:
+    """Initialize the DuckDB target on a caller-owned connection.
+
+    Executes each statement from :func:`ddl_statements` in order on
+    ``connection``. Idempotent: the DDL uses ``IF NOT EXISTS`` /
+    ``OR REPLACE``, so re-running on the same connection is safe.
+
+    Ownership contract (narrow slice):
+
+    - the caller opens, owns, and closes the connection — this function
+      never calls ``connect`` and never closes the handle (see
+      :func:`connect` for opening);
+    - no record insertion happens here (see :func:`insert_records`);
+    - ``duckdb`` is an optional extra (``requirements-duckdb.txt``):
+      the runtime import is function-local so ``import
+      extraction.store`` works with stdlib only. Without the extra,
+      calling this function raises ``ImportError`` with a direct
+      install hint.
+    """
+    if connection is None or not hasattr(connection, "execute"):
+        raise TypeError("init_db requires a DB-API connection with .execute")
+    try:
+        import duckdb  # noqa: F401  (optional extra, function-local only)
+    except ImportError as exc:
+        raise ImportError(
+            "duckdb is required for init_db; install the optional extra: "
+            "pip install -r requirements-duckdb.txt"
+        ) from exc
+    for statement in ddl_statements():
+        connection.execute(statement)
+
+
+# Single-row upsert: column order matches COLUMNS; PK conflicts are skipped.
+_INSERT_SQL = (
+    'INSERT INTO financial_records (record_id, metric, period, fiscal_year, "value", '
+    "currency, branch_id, department_id, document_id, page, source_label, "
+    'display_value, "precision", created_batch) '
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+    "ON CONFLICT(record_id) DO NOTHING"
+)
+
+
+def insert_records(connection: Any, records: Any, created_batch: str | None = None) -> int:
+    """Insert pre-validated records in input order; return newly-inserted count.
+
+    Each item of ``records`` is a :class:`FinancialRecord`
+    (``extraction.schemas``) or a plain mapping coercible to one via
+    ``FinancialRecord.model_validate`` — coercion is the fail-closed shape
+    gate (invalid records raise and nothing is written). This module performs
+    no business validation itself: only approved records (see
+    ``validation.py``) may be passed in.
+
+    Behavior contract:
+
+    - one parametrized ``INSERT ... ON CONFLICT(record_id) DO NOTHING`` per
+      row, executed in input order (dedup spelling per design §12);
+    - ``value`` is bound as :class:`~decimal.Decimal` directly into the
+      ``DECIMAL(18, 2)`` column — never converted through float;
+    - the batch runs in an explicit transaction: any failure rolls back
+      everything and re-raises;
+    - ``created_batch`` comes only from the argument (``None`` stores NULL);
+      mappings carrying their own ``created_batch`` key fail coercion
+      (the schema forbids the field) rather than being silently dropped;
+    - returns ``COUNT(*)`` after minus before (the driver reports no
+      affected-row count, so single-writer semantics are assumed);
+    - the target table must already exist (call :func:`init_db` first);
+      a missing table surfaces the driver error unchanged.
+    """
+    if connection is None or not hasattr(connection, "execute"):
+        raise TypeError("insert_records requires a DB-API connection with .execute")
+    if isinstance(records, (str, bytes, Mapping)) or not hasattr(records, "__iter__"):
+        raise TypeError(
+            "insert_records requires an iterable of FinancialRecord or mapping records, "
+            "not a single record"
+        )
+    if created_batch is not None and not isinstance(created_batch, str):
+        raise TypeError("created_batch must be a str or None")
+    try:
+        import duckdb  # noqa: F401  (optional extra, function-local only)
+    except ImportError as exc:
+        raise ImportError(
+            "duckdb is required for insert_records; install the optional extra: "
+            "pip install -r requirements-duckdb.txt"
+        ) from exc
+    try:
+        from .schemas import FinancialRecord
+    except ImportError as exc:
+        raise ImportError(
+            "extraction.schemas (pydantic) is required for insert_records record coercion"
+        ) from exc
+
+    rows: list[tuple[Any, ...]] = []
+    for item in records:
+        if isinstance(item, FinancialRecord):
+            rec = item
+        elif isinstance(item, Mapping):
+            rec = FinancialRecord.model_validate(dict(item))
+        else:
+            raise TypeError(
+                "insert_records items must be FinancialRecord or mapping, "
+                f"got {type(item).__name__}"
+            )
+        metric = rec.metric.value if hasattr(rec.metric, "value") else rec.metric
+        rows.append(
+            (
+                rec.record_id,
+                metric,
+                rec.period,
+                rec.fiscal_year,
+                rec.value,
+                rec.currency,
+                rec.branch_id,
+                rec.department_id,
+                rec.document_id,
+                rec.page,
+                rec.source_label,
+                rec.display_value,
+                rec.precision,
+                created_batch,
+            )
+        )
+
+    if not rows:
+        return 0
+    before = connection.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}").fetchone()[0]
+    connection.execute("BEGIN")
+    try:
+        for params in rows:
+            connection.execute(_INSERT_SQL, params)
+        connection.execute("COMMIT")
+    except Exception:
+        try:
+            connection.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    after = connection.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}").fetchone()[0]
+    return int(after) - int(before)
 
 
 def _escape_literal(text: str) -> str:

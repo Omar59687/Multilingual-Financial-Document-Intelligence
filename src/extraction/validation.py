@@ -14,9 +14,13 @@ What this module enforces:
 1. Sign rules
    - NEVER negative: revenue, cogs, operating_expenses, other_income,
      finance_costs, tax_expense, subtotal, vat, amount, tax_amount,
-     total_amount, total, budget / budget_amount, actual.
+     total_amount, total, budget / budget_amount, actual, plus every
+     balance-sheet component except equity (cash, accounts_receivable,
+     inventory, other_current_assets, property_plant_equipment,
+     total_assets, accounts_payable, debt, other_liabilities,
+     total_liabilities).
    - MAY be negative: gross_profit, operating_profit, net_income,
-     variance (and derived variance_pct).
+     variance (and derived variance_pct), equity (accounting plug).
    - Transactions convention: amounts are magnitudes (>= 0) plus a
      separate ``transaction_type``; refunds/adjustments are expressed
      by type, never by a negative amount. A negative ``amount`` is
@@ -62,9 +66,13 @@ What this module enforces:
      ``from .periods import parse_period`` inside a function body
      remains the approved migration path (optional import with local
      regex fallback) precisely because it avoids the top-level cycle.
+     FY labels (``FY2024`` / ``FY 2024``, case-insensitive) are accepted
+     locally as YEAR grain; canonical stays the bare year (I3 owns
+     periods.py canonicalization).
    - Accepted period shapes: ``YYYY-MM-01`` (monthly), ``YYYY-Qn``
      (quarterly budgets), ``YYYY-MM-DD`` (transaction/invoice dates),
-     ``YYYY`` (annual). Year must be 2015–2024 inclusive (canonical
+     ``YYYY`` (annual), ``FY2024`` / ``FY 2024`` (fiscal-year labels,
+     YEAR grain, never expanded to a month/day). Year must be 2015–2024 inclusive (canonical
      dataset range); months/days are range-checked (incl. leap years).
    - Dammam (``BR-DMM``) opened 2019-01-01: any Dammam record with a
      period before 2019-01-01 (``YYYY-MM-01``/``YYYY-MM-DD`` string
@@ -82,6 +90,11 @@ What this module enforces:
      ``{"variance", "variance_pct", "budget_zero"}`` with
      variance = actual - budget (2dp ROUND_HALF_UP) and pct = None
      when budget == 0 (never divides by zero).
+   - ``check_bs_r9/r10/r11(fields, precisions)`` verify the
+     balance-sheet equation precision-aware: tol 0.01 when every
+     involved precision is exact-visible, else widened to
+     max(0.01, 0.005*max|value|); absent subsets are NOT_EVALUATED,
+     present-but-unparseable is FAIL.
 
 6. Provenance completeness (Rule 10 traceability)
    - ``provenance`` dict (or top-level equivalent keys) must carry
@@ -128,9 +141,13 @@ __all__ = [
     "check_r1_r3",
     "check_invoice_total",
     "check_transaction_total",
+    "check_bs_r9",
+    "check_bs_r10",
+    "check_bs_r11",
     "budget_variance",
     "check_budget_variance",
     "check_precision_claim",
+    "normalize_bs_label",
     "warnings_for_record",
     "validate_record",
     "validate_batch",
@@ -164,6 +181,17 @@ MONEY_FIELDS_ORDER = (
     "budget_amount",
     "actual",
     "variance",
+    "cash",
+    "accounts_receivable",
+    "inventory",
+    "other_current_assets",
+    "property_plant_equipment",
+    "total_assets",
+    "accounts_payable",
+    "debt",
+    "other_liabilities",
+    "total_liabilities",
+    "equity",
 )
 
 NONNEGATIVE_FIELDS = frozenset({
@@ -182,6 +210,16 @@ NONNEGATIVE_FIELDS = frozenset({
     "budget",
     "budget_amount",
     "actual",
+    "cash",
+    "accounts_receivable",
+    "inventory",
+    "other_current_assets",
+    "property_plant_equipment",
+    "total_assets",
+    "accounts_payable",
+    "debt",
+    "other_liabilities",
+    "total_liabilities",
 })
 
 #: Money fields explicitly allowed to be negative.
@@ -190,6 +228,7 @@ MAY_BE_NEGATIVE_FIELDS = frozenset({
     "operating_profit",
     "net_income",
     "variance",
+    "equity",
 })
 
 #: Labels this validator recognises. Anything else is "unknown" and is
@@ -212,6 +251,7 @@ _RE_MONTH = re.compile(r"^(\d{4})-(\d{2})-01$")
 _RE_QUARTER = re.compile(r"^(\d{4})-[Qq]([1-4])$")
 _RE_DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 _RE_YEAR = re.compile(r"^(\d{4})$")
+_RE_FY = re.compile(r"^FY ?(\d{4})$", re.IGNORECASE)
 
 _CURRENCY_TOKENS = ("sar", "$", "usd", "aed", "egp", "qar", "kwd",
                     "ر.س", "ر. س", "ريال")
@@ -361,8 +401,18 @@ def _check_period_format(period) -> list[str]:
             return [f"E_PERIOD:out_of_range:{text!r} year must be "
                     f"{_YEAR_MIN}-{_YEAR_MAX}"]
         return []
+    m = _RE_FY.match(text)
+    if m:
+        # Fiscal-year label: YEAR grain only. The canonical value stays
+        # the bare year — never expanded to YYYY-12-31, no month/day
+        # invented (coordinate with periods.py owner on canonical form).
+        year = int(m.group(1))
+        if not (_YEAR_MIN <= year <= _YEAR_MAX):
+            return [f"E_PERIOD:out_of_range:{text!r} year must be "
+                    f"{_YEAR_MIN}-{_YEAR_MAX}"]
+        return []
     return [f"E_PERIOD:bad_format:{text!r} expected YYYY-MM-01, YYYY-Qn, "
-            f"YYYY-MM-DD, or YYYY"]
+            f"YYYY-MM-DD, YYYY, or FY2024"]
 
 
 def is_valid_period(period) -> bool:
@@ -394,6 +444,11 @@ def _is_dammam_pre_opening(branch_id, period) -> bool:
         return (int(m.group(1)), int(m.group(2))) < _DMM_OPEN_QUARTER
     m = _RE_YEAR.match(text)
     if m:
+        return int(m.group(1)) < _DMM_OPEN_YEAR
+    m = _RE_FY.match(text)
+    if m:
+        # FY labels are YEAR grain: compare the bare year, never an
+        # invented month/day.
         return int(m.group(1)) < _DMM_OPEN_YEAR
     return False
 
@@ -683,6 +738,161 @@ def check_transaction_total(amount=None, tax_amount=None, total_amount=None,
     return []
 
 
+# ---------------------------------------------------------------------------
+# Balance-sheet reconciliation (R9/R10/R11, precision-aware)
+# ---------------------------------------------------------------------------
+# Canonical equation mirrors src/dataset/validators.py: every
+# balance-sheet component is non-negative EXCEPT equity (the accounting
+# plug, which may be negative). Extraction metric names use
+# ``property_plant_equipment`` for the canonical
+# ``property_and_equipment`` column. Stdlib + decimal only.
+_BS_R9_METRICS = (
+    "cash",
+    "accounts_receivable",
+    "inventory",
+    "other_current_assets",
+    "property_plant_equipment",
+    "total_assets",
+)
+_BS_R10_METRICS = (
+    "accounts_payable",
+    "debt",
+    "other_liabilities",
+    "total_liabilities",
+)
+_BS_R11_METRICS = (
+    "total_assets",
+    "total_liabilities",
+    "equity",
+)
+_BS_ALL_METRICS = (
+    "cash",
+    "accounts_receivable",
+    "inventory",
+    "other_current_assets",
+    "property_plant_equipment",
+    "total_assets",
+    "accounts_payable",
+    "debt",
+    "other_liabilities",
+    "total_liabilities",
+    "equity",
+)
+_BS_R9_EXPR = ("total_assets != cash + accounts_receivable + inventory "
+               "+ other_current_assets + property_plant_equipment")
+_BS_R10_EXPR = ("total_liabilities != accounts_payable + debt "
+                "+ other_liabilities")
+_BS_R11_EXPR = "total_assets != total_liabilities + equity"
+
+#: Widening factor for rounded inputs: tol = max(0.01, 0.005*max|value|)
+#: covers M-suffixed display-rounding bands; it widens, never fabricates.
+_BS_ROUNDED_BAND = Decimal("0.005")
+
+
+def _bs_precision_band(precisions: dict, involved: tuple) -> str:
+    """Weakest precision among ``involved`` fields.
+
+    ``exact-visible`` (strongest) > ``approximate``/``display-rounded`` >
+    ``unknown`` (weakest). A missing entry counts as unknown, i.e. the
+    weakest, so mixed precisions always report the weakest. ``approximate``
+    is this engine's OUTPUT grade for widened-tolerance evaluation; it is
+    accepted as a rounded input grade so helper outputs round-trip.
+    """
+    if not isinstance(precisions, dict):
+        return "unknown"
+    seen_rounded = False
+    for metric in involved:
+        claimed = precisions.get(metric)
+        if claimed == "exact-visible":
+            continue
+        if claimed in ("display-rounded", "approximate"):
+            seen_rounded = True
+            continue
+        return "unknown"  # missing / "unknown" / garbage is weakest
+    return "approximate" if seen_rounded else "exact-visible"
+
+
+def _check_bs_rule(rule: str, involved: tuple, expr: str, diff_of,
+                   fields, precisions) -> dict:
+    """Shared R9/R10/R11 engine. Never raises on ordinary data."""
+    metrics = list(involved)
+    if not isinstance(fields, dict):
+        fields = {}
+    if not isinstance(precisions, dict):
+        precisions = {}
+    missing = [m for m in involved if m not in fields or fields[m] is None]
+    if missing:
+        return {"rule": rule, "status": "NOT_EVALUATED",
+                "reason": f"{rule} not evaluated: missing fields: {missing}",
+                "metrics": metrics, "precision": "unknown"}
+    parsed: dict = {}
+    bad: list = []
+    for metric in involved:
+        dec = _to_decimal(fields[metric])
+        if dec is None:
+            bad.append(metric)
+        else:
+            parsed[metric] = dec
+    if bad:
+        return {"rule": rule, "status": "FAIL",
+                "reason": f"{rule} inputs must be numeric: "
+                          f"unparseable fields: {bad}",
+                "metrics": metrics, "precision": "unknown"}
+    band = _bs_precision_band(precisions, involved)
+    if band == "exact-visible":
+        tolerance = MONEY_TOL
+    else:
+        peak = max(abs(value) for value in parsed.values())
+        widened = _BS_ROUNDED_BAND * peak
+        tolerance = widened if widened > MONEY_TOL else MONEY_TOL
+    diff = diff_of(parsed)
+    if abs(diff) <= tolerance:
+        return {"rule": rule, "status": "PASS",
+                "reason": f"{rule} holds within tol {tolerance}",
+                "metrics": metrics, "precision": band}
+    return {"rule": rule, "status": "FAIL",
+            "reason": f"{expr} (diff {diff} > tol {tolerance})",
+            "metrics": metrics, "precision": band}
+
+
+def check_bs_r9(fields, precisions=None) -> dict:
+    """Verify R9: total_assets == asset components (precision-aware).
+
+    Returns ``{"rule", "status", "reason", "metrics", "precision"}``
+    with status PASS / FAIL / NOT_EVALUATED and precision
+    exact-visible / approximate / unknown.
+    """
+    def _diff(p):
+        return (p["total_assets"] - p["cash"] - p["accounts_receivable"]
+                - p["inventory"] - p["other_current_assets"]
+                - p["property_plant_equipment"])
+    return _check_bs_rule("R9", _BS_R9_METRICS, _BS_R9_EXPR, _diff,
+                          fields, precisions)
+
+
+def check_bs_r10(fields, precisions=None) -> dict:
+    """Verify R10: total_liabilities == liability components.
+
+    Same precision-aware return shape as :func:`check_bs_r9`.
+    """
+    def _diff(p):
+        return (p["total_liabilities"] - p["accounts_payable"]
+                - p["debt"] - p["other_liabilities"])
+    return _check_bs_rule("R10", _BS_R10_METRICS, _BS_R10_EXPR, _diff,
+                          fields, precisions)
+
+
+def check_bs_r11(fields, precisions=None) -> dict:
+    """Verify R11: total_assets == total_liabilities + equity.
+
+    Same precision-aware return shape as :func:`check_bs_r9`.
+    """
+    def _diff(p):
+        return (p["total_assets"] - p["total_liabilities"] - p["equity"])
+    return _check_bs_rule("R11", _BS_R11_METRICS, _BS_R11_EXPR, _diff,
+                          fields, precisions)
+
+
 def budget_variance(actual, budget) -> dict:
     """Derive variance diagnostics without ever dividing by zero.
 
@@ -801,12 +1011,77 @@ def _check_record_reconciliation(rec: dict) -> list[str]:
                 if reported_pct is not None:
                     errors.append("E_RECONCILIATION:variance_pct: variance_pct must be None "
                                   "when budget == 0 (never divide by zero)")
+    # R9/R10/R11 (balance sheet, precision-aware): per-field precisions
+    # come from rec["field_precisions"] (dict; malformed ignored). Absent
+    # subsets are NOT_EVALUATED (no error); FAIL (mismatch or present-
+    # but-unparseable) surfaces as E_RECONCILIATION in R1-R4 style.
+    field_precisions = rec.get("field_precisions", {})
+    if not isinstance(field_precisions, dict):
+        field_precisions = {}
+    wide = {k: rec[k] for k in _BS_ALL_METRICS if k in rec}
+    for _helper, _rule in ((check_bs_r9, "R9"), (check_bs_r10, "R10"),
+                           (check_bs_r11, "R11")):
+        _result = _helper(wide, field_precisions)
+        if _result["status"] == "FAIL":
+            _reason = _result.get("reason", "")
+            if "unparseable" in _reason:
+                errors.append(f"E_RECONCILIATION:{_rule}_unparseable: "
+                              f"{_reason}")
+            else:
+                errors.append(f"E_RECONCILIATION:{_rule}: {_reason}")
     return errors
 
 
 # ---------------------------------------------------------------------------
 # Label helpers
 # ---------------------------------------------------------------------------
+
+#: Balance-sheet metric names recognised by ``normalize_bs_label``.
+_BS_FIELDS = frozenset(_BS_ALL_METRICS)
+
+#: Minimal static aliases for balance-sheet labels that generic rules
+#: (casefold/strip/whitespace-collapse/underscore-mapping) cannot produce.
+#: Includes the underscored canonical column-name form so dataset ETL keys
+#: map without enum duplication.
+_BS_LABEL_ALIASES = {
+    "property and equipment": "property_plant_equipment",
+    "property plant and equipment": "property_plant_equipment",
+    "property_and_equipment": "property_plant_equipment",
+}
+
+
+def normalize_bs_label(label) -> str | None:
+    """Normalize a free-text balance-sheet label to a canonical metric.
+
+    Steps: casefold, strip, whitespace-collapse, trailing-colon-strip,
+    trailing parenthetical-suffix strip (e.g. ``"Property and equipment
+    (net)"``), ``&`` -> ``and`` plus ``-``/``,`` -> space cleanup; then
+    the minimal alias dict above; then a generic space -> underscore
+    mapping checked against the 11 balance-sheet metrics. Returns None
+    when unmapped — labels are passed through, never invented, and no
+    numeric truth is consulted. Stdlib only.
+    """
+    if not isinstance(label, str):
+        return None
+    text = label.strip().casefold()
+    if not text:
+        return None
+    text = re.sub(r"\s+", " ", text)
+    text = text.rstrip(":").strip()
+    text = re.sub(r"\s*\([^()]*\)\s*$", "", text).strip()
+    if not text:
+        return None
+    text = text.replace("&", "and").replace("-", " ").replace(",", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return None
+    if text in _BS_LABEL_ALIASES:
+        return _BS_LABEL_ALIASES[text]
+    candidate = text.replace(" ", "_")
+    if candidate in _BS_FIELDS:
+        return candidate
+    return None
+
 
 def warnings_for_record(rec: dict) -> list[str]:
     """Return pass-through W_LABEL warnings (never errors) for unknowns."""

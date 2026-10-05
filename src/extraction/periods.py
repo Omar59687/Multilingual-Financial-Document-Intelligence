@@ -8,6 +8,16 @@ Canonical model (canonical §2 — explicit dates only):
 - Quarterly budgets: ``YYYY-Qn`` with ``n`` in 1..4, range 2015-Q1..2024-Q4,
   with defined month bounds (Q1 Jan-Mar, Q2 Apr-Jun, Q3 Jul-Sep, Q4 Oct-Dec).
 - Annual grain: ``YYYY`` (company-level balance sheet), range 2015..2024.
+- Fiscal-year-end labels: ``FY2024`` / ``FY 2024`` (case-insensitive ``FY``
+  prefix, ONE optional space, exactly four digits) are a display variant of
+  the existing annual (year) grain — NOT a new kind. They parse to kind
+  ``"year"`` with canonical ``"YYYY"`` (plain year string, NEVER
+  ``"YYYY-12-31"`` — no month/day is invented) and calendar-year bounds
+  ``YYYY-01-01``..``YYYY-12-31`` (same as plain-year input). The bounds are
+  calendar bounds, not an assertion the fact occurred on Dec 31
+  (balance-sheet point-in-time context). Range-checked 2015..2024 like
+  plain years; bare ``"FY"`` / ``"FY24"`` / ``"FY202"`` / ``"FY20244"``
+  raise ``ValueError``.
 - Global admissible range: 2015-01-01..2024-12-31, mirroring
   ``src/dataset/config.py`` ``START_YEAR``/``END_YEAR`` (mirrored here as
   literals so this module stays stdlib-only and decoupled from the dataset
@@ -36,6 +46,8 @@ Dammam NULL rule (BR-DMM opened 2019-01-01):
 
 Out of scope:
 
+- Year-RANGE kinds (e.g. ``2020-2022`` spans) are NOT added: no canonical
+  need — ranges are query windows, documented as deferred.
 - Month-name parsing (Arabic/English month names such as "مارس"/"March")
   is OUT OF SCOPE for this module. ``normalize_date_display`` handles only
   numeric forms (see its docstring). Name-based parsing belongs to a
@@ -59,6 +71,7 @@ DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 
 # Local parse helpers (not in validators.py):
 _YEAR_RE = re.compile(r"^(\d{4})$")
+_FY_YEAR_RE = re.compile(r"^[Ff][Yy] ?(\d{4})$")
 _QUARTER_PARSE_RE = re.compile(r"^(\d{4})-[Qq]([1-4])$")
 
 # Mirrors src/dataset/config.py START_YEAR / END_YEAR (kept as literals to
@@ -98,6 +111,9 @@ def parse_period(s: str) -> dict:
     Accepted inputs (after stripping surrounding whitespace):
 
     - ``YYYY``                      -> kind ``"year"``
+    - ``FY2024`` / ``FY 2024`` (case-insensitive ``FY``, one optional
+      space, exactly four digits) -> kind ``"year"`` (FY display variant;
+      canonical ``"YYYY"``, calendar-year bounds — not Dec-31 assertion)
     - ``YYYY-Qn`` (``q`` ok)        -> kind ``"quarter"``, canonical ``YYYY-Qn``
     - ``YYYY-MM-01``                -> kind ``"month"`` (monthly aggregate)
     - any other valid ``YYYY-MM-DD`` -> kind ``"day"``
@@ -125,6 +141,19 @@ def parse_period(s: str) -> dict:
         )
 
     m = _YEAR_RE.match(t)
+    if m:
+        year = int(m.group(1))
+        _check_year_in_range(year, s)
+        start, end = year_bounds(year)
+        return {
+            "kind": "year",
+            "iso_start": start,
+            "iso_end": end,
+            "fiscal_year": year,
+            "canonical": f"{year:04d}",
+        }
+
+    m = _FY_YEAR_RE.match(t)
     if m:
         year = int(m.group(1))
         _check_year_in_range(year, s)

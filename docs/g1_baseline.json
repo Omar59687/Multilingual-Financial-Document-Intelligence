@@ -1,0 +1,922 @@
+{
+  "generated_at": "2026-10-04T08:51:33.484818+00:00",
+  "per_doc": {
+    "DEV-001": {
+      "language": "en",
+      "expected": 21,
+      "extracted": 18,
+      "ok": true,
+      "warnings": 2,
+      "tp": 18,
+      "fp": 0,
+      "fn": 3,
+      "precision": 1.0,
+      "recall": 0.8571428571428571,
+      "f1": 0.923076923076923,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-001",
+            "revenue",
+            "2023",
+            "BR-RUH"
+          ],
+          "expected": "55963929.28"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-001",
+            "revenue",
+            "2023",
+            "BR-JED"
+          ],
+          "expected": "28983851.32"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-001",
+            "revenue",
+            "2023",
+            "BR-DMM"
+          ],
+          "expected": "12867432.84"
+        }
+      ],
+      "n_misses_total": 3
+    },
+    "DEV-002": {
+      "language": "ar",
+      "expected": 12,
+      "extracted": 0,
+      "ok": true,
+      "warnings": 24,
+      "tp": 0,
+      "fp": 0,
+      "fn": 12,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-01-01",
+            "BR-JED"
+          ],
+          "expected": "416442.35"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-02-01",
+            "BR-JED"
+          ],
+          "expected": "507477.24"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-03-01",
+            "BR-JED"
+          ],
+          "expected": "555540.00"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-04-01",
+            "BR-JED"
+          ],
+          "expected": "643358.90"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-05-01",
+            "BR-JED"
+          ],
+          "expected": "645037.54"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-06-01",
+            "BR-JED"
+          ],
+          "expected": "542226.41"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-07-01",
+            "BR-JED"
+          ],
+          "expected": "630858.36"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-08-01",
+            "BR-JED"
+          ],
+          "expected": "538267.82"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-09-01",
+            "BR-JED"
+          ],
+          "expected": "485726.67"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-10-01",
+            "BR-JED"
+          ],
+          "expected": "474595.39"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-11-01",
+            "BR-JED"
+          ],
+          "expected": "494760.19"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-002",
+            "operating_expenses",
+            "2022-12-01",
+            "BR-JED"
+          ],
+          "expected": "538612.96"
+        }
+      ],
+      "n_misses_total": 12
+    },
+    "DEV-003": {
+      "language": "mixed",
+      "expected": 3,
+      "extracted": 3,
+      "ok": true,
+      "warnings": 7,
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [],
+      "n_misses_total": 0
+    },
+    "DEV-004": {
+      "language": "ar",
+      "expected": 3,
+      "extracted": 3,
+      "ok": true,
+      "warnings": 4,
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [],
+      "n_misses_total": 0
+    },
+    "DEV-005": {
+      "language": "mixed",
+      "expected": 0,
+      "extracted": 0,
+      "ok": true,
+      "warnings": 3,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [],
+      "n_misses_total": 0
+    },
+    "DEV-006": {
+      "language": "en",
+      "expected": 12060,
+      "extracted": 10807,
+      "ok": true,
+      "warnings": 1253,
+      "tp": 10807,
+      "fp": 0,
+      "fn": 1253,
+      "precision": 1.0,
+      "recall": 0.8961028192371476,
+      "f1": 0.9452048803953296,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-01",
+            "BR-JED"
+          ],
+          "expected": "2062.90"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-02",
+            "BR-DMM"
+          ],
+          "expected": "9376.40"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-02",
+            "BR-RUH"
+          ],
+          "expected": "1981.20"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-03",
+            "BR-DMM"
+          ],
+          "expected": "1172.00"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-03",
+            "BR-DMM"
+          ],
+          "expected": "175.80"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-03",
+            "BR-DMM"
+          ],
+          "expected": "1347.80"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-03",
+            "BR-JED"
+          ],
+          "expected": "1616.30"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-03",
+            "BR-JED"
+          ],
+          "expected": "1734.00"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-03",
+            "BR-RUH"
+          ],
+          "expected": "102.70"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-04",
+            "BR-DMM"
+          ],
+          "expected": "1348.70"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-04",
+            "BR-DMM"
+          ],
+          "expected": "2018.10"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-04",
+            "BR-JED"
+          ],
+          "expected": "324.60"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-04",
+            "BR-RUH"
+          ],
+          "expected": "794.40"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-06",
+            "BR-JED"
+          ],
+          "expected": "1931.10"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-06",
+            "BR-RUH"
+          ],
+          "expected": "7796.80"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-06",
+            "BR-RUH"
+          ],
+          "expected": "106.60"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-06",
+            "BR-RUH"
+          ],
+          "expected": "178.20"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-07",
+            "BR-DMM"
+          ],
+          "expected": "976.30"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-07",
+            "BR-JED"
+          ],
+          "expected": "8255.10"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-07",
+            "BR-RUH"
+          ],
+          "expected": "1928.30"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-07",
+            "BR-RUH"
+          ],
+          "expected": "3133.60"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-08",
+            "BR-DMM"
+          ],
+          "expected": "3732.40"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-08",
+            "BR-JED"
+          ],
+          "expected": "22385.40"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-08",
+            "BR-JED"
+          ],
+          "expected": "5039.70"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-08",
+            "BR-RUH"
+          ],
+          "expected": "955.40"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-09",
+            "BR-DMM"
+          ],
+          "expected": "3785.30"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-09",
+            "BR-DMM"
+          ],
+          "expected": "567.80"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-09",
+            "BR-DMM"
+          ],
+          "expected": "4353.10"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-09",
+            "BR-JED"
+          ],
+          "expected": "8521.80"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-09",
+            "BR-JED"
+          ],
+          "expected": "1077.40"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-11",
+            "BR-DMM"
+          ],
+          "expected": "6453.70"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-11",
+            "BR-DMM"
+          ],
+          "expected": "3827.30"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-11",
+            "BR-DMM"
+          ],
+          "expected": "356.60"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-11",
+            "BR-RUH"
+          ],
+          "expected": "3079.80"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-11",
+            "BR-RUH"
+          ],
+          "expected": "19197.50"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-12",
+            "BR-RUH"
+          ],
+          "expected": "2245.40"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-14",
+            "BR-DMM"
+          ],
+          "expected": "1046.10"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-14",
+            "BR-JED"
+          ],
+          "expected": "1571.90"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-14",
+            "BR-JED"
+          ],
+          "expected": "0.00"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-15",
+            "BR-JED"
+          ],
+          "expected": "248.90"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-15",
+            "BR-RUH"
+          ],
+          "expected": "3439.60"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-15",
+            "BR-RUH"
+          ],
+          "expected": "247.40"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-16",
+            "BR-JED"
+          ],
+          "expected": "3859.80"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-16",
+            "BR-JED"
+          ],
+          "expected": "5936.90"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "tax_amount",
+            "2023-01-16",
+            "BR-JED"
+          ],
+          "expected": "0.00"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-16",
+            "BR-JED"
+          ],
+          "expected": "2905.20"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-16",
+            "BR-JED"
+          ],
+          "expected": "2107.20"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "total_amount",
+            "2023-01-16",
+            "BR-RUH"
+          ],
+          "expected": "24072.80"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-16",
+            "BR-RUH"
+          ],
+          "expected": "291.00"
+        },
+        {
+          "kind": "missed",
+          "key": [
+            "DEV-006",
+            "amount",
+            "2023-01-17",
+            "BR-DMM"
+          ],
+          "expected": "1381.60"
+        }
+      ],
+      "n_misses_total": 1253
+    },
+    "DEV-007": {
+      "language": "mixed",
+      "expected": 1038,
+      "extracted": 1038,
+      "ok": true,
+      "warnings": 0,
+      "tp": 1038,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [],
+      "n_misses_total": 0
+    },
+    "DEV-008": {
+      "language": "en",
+      "expected": 0,
+      "extracted": 0,
+      "ok": true,
+      "warnings": 1,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [],
+      "n_misses_total": 0
+    },
+    "DEV-009": {
+      "language": "mixed",
+      "expected": 0,
+      "extracted": 0,
+      "ok": true,
+      "warnings": 2,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [],
+      "n_misses_total": 0
+    },
+    "DEV-010": {
+      "language": "en",
+      "expected": 11,
+      "extracted": 11,
+      "ok": true,
+      "warnings": 0,
+      "tp": 11,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "numeric_accuracy": 1.0,
+      "band_matches": 0,
+      "misses": [],
+      "n_misses_total": 0
+    }
+  },
+  "slices": {
+    "en": {
+      "tp": 10836,
+      "fp": 0,
+      "fn": 1256,
+      "precision": 1.0,
+      "recall": 0.8961296725107509,
+      "f1": 0.9452198185624564
+    },
+    "ar": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 12,
+      "precision": 1.0,
+      "recall": 0.2,
+      "f1": 0.33333333333333337
+    },
+    "mixed": {
+      "tp": 1041,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "overall": {
+    "tp": 11880,
+    "fp": 0,
+    "fn": 1268,
+    "precision": 1.0,
+    "recall": 0.9035594767264983,
+    "f1": 0.9493367428480102
+  },
+  "in_scope_core": {
+    "tp": 11880,
+    "fp": 0,
+    "fn": 1268,
+    "precision": 1.0,
+    "recall": 0.9035594767264983,
+    "f1": 0.9493367428480102
+  },
+  "out_of_scope": [
+    {
+      "doc": "DEV-001",
+      "class": "derived-yoy",
+      "detail": "YoY Change% column is derived (R-computed), not a field"
+    },
+    {
+      "doc": "DEV-002",
+      "class": "derived-annual-total",
+      "detail": "headline annual opex total is a derived 12-month sum (G4 territory, not a field)"
+    },
+    {
+      "doc": "DEV-002",
+      "class": "derived-categories",
+      "detail": "6 category aggregates are derived sums (G4 territory, not fields)"
+    },
+    {
+      "doc": "DEV-002",
+      "class": "non-rendered-txns",
+      "detail": "372 txn rows feed aggregates only (explicit partial-extract design)"
+    },
+    {
+      "doc": "DEV-005",
+      "class": "prose-numbers",
+      "detail": "commentary prose figures have no extraction route (human-verify backlog)"
+    },
+    {
+      "doc": "DEV-008",
+      "class": "visual-annual-10y",
+      "detail": "chart annual revenues are M-rounded on-chart (approximate-only grain, human-verify backlog)"
+    },
+    {
+      "doc": "DEV-009",
+      "class": "visual-kpi-rounded",
+      "detail": "4 KPI cards are M-abbreviated displays (approximate-only grain, human-verify backlog)"
+    },
+    {
+      "doc": "DEV-009",
+      "class": "visual-branch-bars-rounded",
+      "detail": "branch bars are M-abbreviated displays (approximate-only grain, human-verify backlog)"
+    },
+    {
+      "doc": "DEV-009",
+      "class": "budget-grain",
+      "detail": "budget_total/variance have no budget-table route (no budget tables in corpus)"
+    },
+    {
+      "doc": "DEV-010",
+      "class": "context-2019",
+      "detail": "2019 comparatives are unevaluated context (spec: NOT rendered)"
+    }
+  ]
+}

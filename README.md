@@ -5,8 +5,16 @@ AI-Powered Finance Document Intelligence System
 
 ## Current Status
 
-- Current phase: **Phase 1 — Native Document Ingestion** (Phase 0 COMPLETE,
-  dataset_v0.1 frozen — see `docs/DATASET_V0_1_FREEZE.md`)
+- Current phase: **Phase 3 — Structured Extraction: DONE** (architect gate 2026-10-04: G1 PASS under Option B, P 1.000 / R 0.904; G4 7/7 PASS).
+- Completed phases: **Phase 0**, **Phase 1**, **Phase 2**, and **Phase 3**.
+- Phase 3 delivered: foundation, Phase 3A, DuckDB persistence, all four
+  extraction routes (native tabular, native statement tables, Paddle
+  scanned grids, Qwen visual pairs), calculation-query library,
+  forecasting handoff (360 tests; G1/G4 baselines in
+  `docs/G1_G4_BASELINE.md`). Arabic/visual/prose limitations remain
+  mandatory follow-ups before G6 — the Arabic slice (0.200) is explicitly
+  not production-quality.
+- Next phase: **Phase 4 — Text RAG** (not started).
 - Development is incremental: the pipeline must prove itself on ~10 representative documents before scaling toward ~150 files / ~10 years.
 
 ## Phase-1 native ingestion
@@ -79,4 +87,4 @@ Authoritative docs (read these before contributing):
  - [docs/EVALUATION_PLAN.md](docs/EVALUATION_PLAN.md) — evaluation contract (DRAFT, thresholds TBD)
  - [docs/DEV_DOCUMENT_SPEC.md](docs/DEV_DOCUMENT_SPEC.md) — DEV-001…010 document/ground-truth specification (ACTIVE for dataset_v0.1)
 - [docs/DATASET_V0_1_FREEZE.md](docs/DATASET_V0_1_FREEZE.md) — Phase 0 freeze record
-- [docs/INGESTION_DESIGN.md](docs/INGESTION_DESIGN.md) — Phase 1 native-ingestion design (ACTIVE)
+- [docs/INGESTION_DESIGN.md](docs/INGESTION_DESIGN.md) — completed Phase 1 native-ingestion design; see [docs/PHASE_1_FREEZE.md](docs/PHASE_1_FREEZE.md)

@@ -6,19 +6,18 @@ AI-Powered Finance Document Intelligence System
 
 ## Current Status
 
-- Current phase: **Phase 2 — OCR and Visual Document Understanding**
-- Current task: First OCR/document-understanding benchmark experiment
-  (Tesseract baseline → PaddleOCR-VL-1.6 → optional Qwen3-VL; harness in
-  [OCR_VISION_DESIGN.md](OCR_VISION_DESIGN.md), report template in
-  [OCR_EXPERIMENT_TEMPLATE.md](OCR_EXPERIMENT_TEMPLATE.md))
-- Phase 1 status: COMPLETE (freeze record:
-  [PHASE_1_FREEZE.md](PHASE_1_FREEZE.md), 2026-09-20; 56/56 tests
-  passing; all 17 exit criteria met) — Phase 2 must not regress it
-- Benchmark design: [OCR_VISION_DESIGN.md](OCR_VISION_DESIGN.md) (escalation
-  architecture, candidate classes, fixtures, metrics, Kaggle plan)
-- Implementation status: Phase-1 native ingestion implemented
-  (`src/ingestion/`, design in [INGESTION_DESIGN.md](INGESTION_DESIGN.md));
-  OCR/RAG/forecasting/UI explicitly out of scope until later phases
+- Current phase: **Phase 3 — Structured Financial Extraction: DONE**
+  (architect gate 2026-10-04; evidence `docs/G1_G4_BASELINE.md`)
+- Completed phases: **Phase 0**, **Phase 1**, **Phase 2**, and **Phase 3**
+- Phase 3 foundation: **COMPLETE**
+- Phase 3A: **COMPLETE**
+- Phase 3 persistence / routes / query library / handoff: **COMPLETE**
+- G1/G4 baselines: **G1 PASS (Option B: P 1.000 ≥ 0.99, R 0.904 ≥ 0.90)**;
+  **G4 PASS (7/7)**; Arabic/visual/prose follow-ups mandatory before G6
+- Next phase: **Phase 4 — Text RAG (not started)**
+- Phase freeze/exit evidence: [DATASET_V0_1_FREEZE.md](DATASET_V0_1_FREEZE.md),
+  [PHASE_1_FREEZE.md](PHASE_1_FREEZE.md), and
+  [PHASE_2_OCR_VISION_EXIT.md](PHASE_2_OCR_VISION_EXIT.md)
 - Dataset design status: FROZEN for dataset_v0.1 — [DATASET_DESIGN.md](DATASET_DESIGN.md) + [DEV_DOCUMENT_SPEC.md](DEV_DOCUMENT_SPEC.md) (v0.2+ changes need a new dataset version)
 - Canonical model status: FROZEN for dataset_v0.1 — [CANONICAL_DATA_MODEL.md](CANONICAL_DATA_MODEL.md)
 - Canonical dataset status: IMPLEMENTED — deterministic generator + dataset_v0.1 truth tables validated (seed 42)
@@ -26,6 +25,8 @@ AI-Powered Finance Document Intelligence System
 - Evaluation plan status: PROCEDURE-FROZEN, thresholds TBD — [EVALUATION_PLAN.md](EVALUATION_PLAN.md) (thresholds await baseline experiments; explicitly not a Phase 0 blocker)
 
 ## Phase 0 — Foundation and Dataset Design
+
+Status: **COMPLETE** — freeze record [DATASET_V0_1_FREEZE.md](DATASET_V0_1_FREEZE.md).
 
 Goals:
 
@@ -56,9 +57,8 @@ Build metadata/manifests.
 
 ## Phase 2 — OCR and Visual Document Understanding
 
-Status: **IN PROGRESS — benchmark preparation** (design:
-[OCR_VISION_DESIGN.md](OCR_VISION_DESIGN.md); NOT complete; no production
-OCR integrated yet).
+Status: **COMPLETE** — exit record
+[PHASE_2_OCR_VISION_EXIT.md](PHASE_2_OCR_VISION_EXIT.md).
 
 Add support for:
 
@@ -76,6 +76,14 @@ GPU experimentation may happen in Kaggle.
 Do not select large models blindly.
 
 ## Phase 3 — Structured Financial Extraction
+
+Status: **DONE** — foundation, Phase 3A, DuckDB persistence,
+extraction routes (native tabular / statement tables, Paddle grids,
+Qwen pairs), calculation-query library, and forecasting handoff
+complete (360 tests); G1 PASS under Option B, G4 7/7 PASS
+(`docs/G1_G4_BASELINE.md` + §9 gate resolution 2026-10-04). Arabic/
+visual/prose follow-ups mandatory before G6. See
+[STRUCTURED_EXTRACTION_DESIGN.md](STRUCTURED_EXTRACTION_DESIGN.md).
 
 Define Pydantic models.
 

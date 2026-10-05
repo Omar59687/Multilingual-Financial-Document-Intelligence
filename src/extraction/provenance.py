@@ -42,6 +42,9 @@ Determinism:
 Compatibility:
   * Self-contained: stdlib + Pydantic v2 only. No ``duckdb``, no GT reads,
     no I/O. Pydantic v2 frozen ``BaseModel`` chosen to match I1's stack.
+  * Balance-sheet compatibility (Phase 3 verified): document_id/source_label/display_value/precision
+    + branch dims already supported; FIN-* hash is metric-agnostic via casefold; locations stay
+    optional for scanned-table sources (document-level provenance valid for image-wide visuals).
 """
 
 from __future__ import annotations
@@ -109,6 +112,10 @@ class Provenance(BaseModel):
     )
     precision: Literal["exact-visible", "display-rounded", "unknown"] = Field(
         description="exact-visible only when display fully specifies 2dp; never fabricate hidden precision."
+    )
+    extraction_route: Optional[Literal["native", "light-ocr", "paddle", "qwen-visual"]] = Field(
+        default=None,
+        description="Phase 2 routing-policy vocab; explicit-only, never required; excluded from ID hash.",
     )
 
     @field_validator("page", "row", "column", "table_index", mode="before")
@@ -245,6 +252,7 @@ def canonical_key(
     source_label: Optional[str] = None,
     display_value: Optional[str] = None,
     precision: Optional[str] = None,
+    extraction_route: Optional[str] = None,
 ) -> dict:
     """Return the canonical dict that is hashed to derive a record ID.
 
@@ -254,7 +262,7 @@ def canonical_key(
     (``value`` = normalized 2dp string via ``_normalize_value``,
     ``period`` = canonical period via ``periods.parse_period`` when parseable,
     ``metric`` = casefolded). Evidence fields (``source_label`` /
-    ``display_value`` / ``precision``) are intentionally EXCLUDED from the ID
+    ``display_value`` / ``precision`` / ``extraction_route``) are intentionally EXCLUDED from the ID
     so re-extraction with richer evidence yields the same ``FIN-`` ID;
     they remain on ``Provenance`` for audit. ``page``/``element_id`` kept as
     ``None`` (JSON null) for explicitness.
@@ -264,7 +272,7 @@ def canonical_key(
     ``period``/``period_canonical``, ``value``/``value_str``/
     ``normalized_value``), or explicit keyword args (kwargs win over ``data``
     when both are given and non-``None``). Unknown dict keys are ignored.
-    ``source_label``/``display_value``/``precision`` kwargs are accepted for
+    ``source_label``/``display_value``/``precision``/``extraction_route`` kwargs are accepted for
     backward compatibility but IGNORED in the hash (documented breaking fix).
 
     Raises:
@@ -422,6 +430,7 @@ def build_provenance(
     table_index: Optional[int] = None,
     element_id: Optional[str] = None,
     branch_id: Optional[str] = None,
+    extraction_route: Optional[str] = None,
 ) -> Provenance:
     """Convenience constructor mapping ingestion Document/Element -> Provenance.
 
@@ -433,7 +442,8 @@ def build_provenance(
     Row base note: ingestion ``Element.row`` is format-dependent (PDF/DOCX
     0-based, XLSX/CSV 1-based); native base is preserved, callers must not
     compare across formats. ``branch_id`` may be supplied explicitly
-    (provenance has no ingestion source for it).
+    (provenance has no ingestion source for it). ``extraction_route`` is
+    explicit-kwarg-only (never auto-detected; sources never self-declare routes).
     """
     doc_id = document_id if document_id is not None else _as_str(_field_of(document, "document_id"))
     fname = filename if filename is not None else _field_of(document, "filename")
@@ -478,4 +488,5 @@ def build_provenance(
         display_value=display_value,
         normalized_value=norm,  # type: ignore[arg-type]
         precision=precision,  # type: ignore[arg-type]
+        extraction_route=extraction_route,  # type: ignore[arg-type]
     )
